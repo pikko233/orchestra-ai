@@ -37,7 +37,7 @@ export const workflowProcedure = createTRPCRouter({
       z.object({
         projectId: z.string().min(1),
         workflow: workflowSpecSchema,
-        expectedRevision: z.number().int().nonnegative().optional(),
+        expectedRevision: z.number().int().nonnegative(),
       }),
     )
     .mutation(async ({ ctx, input }) => {

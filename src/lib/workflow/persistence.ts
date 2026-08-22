@@ -34,14 +34,9 @@ export async function saveProjectWorkflow({
   projectId: string;
   userId: string;
   workflow: WorkflowSpec;
-  expectedRevision?: number;
+  expectedRevision: number;
 }) {
   const parsedWorkflow = workflowSpecSchema.parse(workflow);
-  const conditions = [eq(project.id, projectId), eq(project.userId, userId)];
-
-  if (expectedRevision !== undefined) {
-    conditions.push(eq(project.revision, expectedRevision));
-  }
 
   const [updated] = await db
     .update(project)
@@ -50,7 +45,13 @@ export async function saveProjectWorkflow({
       revision: sql`${project.revision} + 1`,
       updatedAt: new Date(),
     })
-    .where(and(...conditions))
+    .where(
+      and(
+        eq(project.id, projectId),
+        eq(project.userId, userId),
+        eq(project.revision, expectedRevision),
+      ),
+    )
     .returning({ workflow: project.workflow, revision: project.revision });
 
   if (updated) {
