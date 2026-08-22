@@ -8,6 +8,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test:workflow": "tsx --test src/lib/workflow/*.test.ts",
+    "db:migrate": "drizzle-kit migrate",
     "ai:memory:setup": "tsx src/scripts/setup-ai-memory.ts"
   },
   "dependencies": {
@@ -21,6 +23,7 @@
     "@trpc/client": "^11.18.0",
     "@trpc/server": "^11.18.0",
     "@trpc/tanstack-react-query": "^11.18.0",
+    "@xyflow/react": "^12.11.3",
     "better-auth": "^1.7.1",
     "class-variance-authority": "^0.7.1",
     "client-only": "^0.0.1",

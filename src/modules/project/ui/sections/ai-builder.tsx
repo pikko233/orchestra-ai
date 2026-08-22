@@ -7,6 +7,8 @@ import { ProjectNameInput } from "../components/project-name-input";
 import { ChatPanel } from "../components/chat-panel";
 import { authClient } from "@/lib/auth-client";
 import { useRouter } from "next/navigation";
+import type { WorkflowSpec } from "@/lib/workflow/schema";
+import { WorkflowCanvas } from "../components/workflow-canvas";
 
 interface Props {
   project: ProjectFindOne;
@@ -17,6 +19,9 @@ export const AIBuilder = ({ project }: Props) => {
   const [isChatOpen, setIsChatOpen] = useState(true);
   const [chatWidth, setChatWidth] = useState(320);
   const [isDragging, setIsDragging] = useState(false);
+  const [workflow, setWorkflow] = useState<WorkflowSpec | null>(
+    project.workflow,
+  );
 
   const router = useRouter();
   const session = authClient.useSession();
@@ -66,6 +71,7 @@ export const AIBuilder = ({ project }: Props) => {
           key={project.id}
           chatWidth={chatWidth}
           projectId={project.id}
+          onWorkflow={setWorkflow}
         />
         {/* 点击拖拽调整左右两侧宽度 */}
         {isChatOpen && (
@@ -108,6 +114,9 @@ export const AIBuilder = ({ project }: Props) => {
             </button>
           </div>
         </header>
+        <div className="min-h-0 flex-1">
+          <WorkflowCanvas workflow={workflow} />
+        </div>
       </main>
     </div>
   );
