@@ -10,6 +10,7 @@ import { auth } from "@/lib/auth";
 import { and, eq } from "drizzle-orm";
 import { headers } from "next/headers";
 import { z } from "zod";
+import { workflowSpecSchema } from "@/lib/workflow/schema";
 
 export const maxDuration = 180;
 
@@ -30,6 +31,18 @@ function sse(event: string, data: unknown) {
 
 function getConversationTitle(content: string) {
   return Array.from(content).slice(0, 50).join("");
+}
+
+function parseWorkflowToolOutput(output: unknown) {
+  if (typeof output !== "string") {
+    return workflowSpecSchema.safeParse(output);
+  }
+
+  try {
+    return workflowSpecSchema.safeParse(JSON.parse(output));
+  } catch {
+    return workflowSpecSchema.safeParse(null);
+  }
 }
 
 export async function POST(req: Request) {
@@ -66,7 +79,11 @@ export async function POST(req: Request) {
 
     // 同时校验项目 ID 和所属用户，避免跨用户访问项目数据。
     const [existingProject] = await db
-      .select({ id: projectTable.id })
+      .select({
+        id: projectTable.id,
+        workflow: projectTable.workflow,
+        revision: projectTable.revision,
+      })
       .from(projectTable)
       .where(
         and(eq(projectTable.id, projectId), eq(projectTable.userId, userId)),
@@ -174,11 +191,21 @@ export async function POST(req: Request) {
           // v3 事件流将模型文本和工具调用拆成独立投影，便于转换为自定义 SSE。
           const agentRun = await mainAgent.streamEvents(
             {
-              messages: [{ role: "user", content: userContent }],
+              messages: [
+                {
+                  role: "system",
+                  content: `当前项目工作流（revision ${existingProject.revision}）：\n${JSON.stringify(existingProject.workflow)}`,
+                },
+                { role: "user", content: userContent },
+              ],
             },
             {
               configurable: { thread_id: conversationId }, // 当前对话的短期记忆
-              context: { userId, projectId },
+              context: {
+                userId,
+                projectId,
+                revision: existingProject.revision,
+              },
               signal: req.signal,
               version: "v3",
             },
@@ -233,7 +260,7 @@ export async function POST(req: Request) {
                 );
 
                 try {
-                  await call.output;
+                  const output = await call.output;
 
                   const [status, error] = await Promise.all([
                     call.status,
@@ -249,6 +276,13 @@ export async function POST(req: Request) {
                       error,
                     }),
                   );
+
+                  if (call.name === "replace_workflow") {
+                    const workflow = parseWorkflowToolOutput(output);
+                    if (workflow.success) {
+                      controller.enqueue(sse("workflow", workflow.data));
+                    }
+                  }
                 } catch (error) {
                   controller.enqueue(
                     sse("tool", {

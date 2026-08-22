@@ -8,14 +8,17 @@ import { ChatInput } from "./chat-input";
 import {
   ChatMessage,
   type ChatMessageData,
-  type ToolCallData,
-  type ToolCallStatus,
 } from "./chat-message";
 import { useRouter } from "next/navigation";
+import {
+  workflowSpecSchema,
+  type WorkflowSpec,
+} from "@/lib/workflow/schema";
 
 interface Props {
   chatWidth: number;
   projectId: string;
+  onWorkflow: (workflow: WorkflowSpec) => void;
 }
 
 type ParsedSseEvent = {
@@ -63,21 +66,7 @@ function getErrorMessage(value: unknown) {
   return "请求失败，请稍后重试";
 }
 
-function upsertToolCall(
-  toolCalls: ToolCallData[] | undefined,
-  nextToolCall: ToolCallData,
-) {
-  const current = toolCalls ?? [];
-  const exists = current.some((toolCall) => toolCall.id === nextToolCall.id);
-
-  return exists
-    ? current.map((toolCall) =>
-        toolCall.id === nextToolCall.id ? nextToolCall : toolCall,
-      )
-    : [...current, nextToolCall];
-}
-
-export const ChatPanel = ({ chatWidth, projectId }: Props) => {
+export const ChatPanel = ({ chatWidth, projectId, onWorkflow }: Props) => {
   const router = useRouter();
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<ChatMessageData[]>([]);
@@ -277,31 +266,11 @@ export const ChatPanel = ({ chatWidth, projectId }: Props) => {
             }
           }
 
-          if (event === "tool") {
-            const messageId = data.messageId;
-            const toolCallId = data.toolCallId;
-            const name = data.name;
-            const status = data.status;
+          if (event === "workflow") {
+            const result = workflowSpecSchema.safeParse(data);
 
-            if (
-              typeof messageId === "string" &&
-              typeof toolCallId === "string" &&
-              typeof name === "string" &&
-              (status === "running" ||
-                status === "completed" ||
-                status === "failed")
-            ) {
-              const toolCall: ToolCallData = {
-                id: toolCallId,
-                name,
-                status: status as ToolCallStatus,
-                error: typeof data.error === "string" ? data.error : undefined,
-              };
-
-              updateMessage(messageId, (message) => ({
-                ...message,
-                toolCalls: upsertToolCall(message.toolCalls, toolCall),
-              }));
+            if (result.success) {
+              onWorkflow(result.data);
             }
           }
 
@@ -328,11 +297,6 @@ export const ChatPanel = ({ chatWidth, projectId }: Props) => {
                 ...message,
                 status: "failed",
                 error,
-                toolCalls: message.toolCalls?.map((toolCall) =>
-                  toolCall.status === "running"
-                    ? { ...toolCall, status: "failed" as const, error }
-                    : toolCall,
-                ),
               }));
             }
 
@@ -396,7 +360,7 @@ export const ChatPanel = ({ chatWidth, projectId }: Props) => {
 
       setLoading(false);
     }
-  }, [conversationId, input, loading, projectId, updateMessage]);
+  }, [conversationId, input, loading, onWorkflow, projectId, updateMessage]);
 
   return (
     <div

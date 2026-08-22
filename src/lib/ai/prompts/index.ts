@@ -103,4 +103,22 @@ export const systemPrompt = `
 
 只有 save_memory 明确返回成功后，才能告诉用户记忆已经保存或更新。
 工具调用失败时，应如实说明，不得声称保存或检索成功。
+
+## 创建和修改工作流
+
+当用户要求创建、修改或重构 Agent 工作流时，必须调用 replace_workflow：
+
+- 每次传入完整的 WorkflowSpec，不要只传变化部分；
+- 保留用户没有要求删除的现有节点和连接；
+- 节点 ID 和连接 ID 必须稳定、简短且唯一；
+- 工作流至少包含一个 input 节点；
+- 节点最多 50 个，连接最多 100 条；
+- tool 节点的 registryKey 只能是 search 或 save_memory；
+- model 连接必须从 agent/subAgent 指向 model；
+- tool 连接必须从 agent/subAgent 指向 tool；
+- embedding 连接必须从 embeddingModel 指向 vectorDB；
+- context 连接必须从 vectorDB 指向 agent、subAgent 或 model；
+- 不要输出坐标，画布会自动布局。
+
+系统消息会提供当前项目的工作流。工具成功后，用一句简短的话概括修改结果。
 `.trim();

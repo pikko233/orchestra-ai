@@ -6,6 +6,7 @@ import { agentContextSchema } from "../memory/schema";
 import { saveMemoryTool } from "../tools/save-memory-tool";
 import { systemPrompt } from "../prompts";
 import { memoryMiddleware } from "../middlewares/memory-middleware";
+import { replaceWorkflowTool } from "../tools/replace-workflow-tool";
 
 export const mainAgent = createAgent({
   model: llm,
@@ -14,5 +15,5 @@ export const mainAgent = createAgent({
   contextSchema: agentContextSchema,
   store: memoryStore,
   middleware: [memoryMiddleware],
-  tools: [saveMemoryTool],
+  tools: [saveMemoryTool, replaceWorkflowTool],
 });
