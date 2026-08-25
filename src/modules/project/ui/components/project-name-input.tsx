@@ -20,41 +20,33 @@ export const ProjectNameInput = ({ projectId, projectName }: Props) => {
 
   const updateProject = useMutation(trpc.project.update.mutationOptions());
 
-  const handleBlur = async () => {
+  const handleBlur = () => {
     setIsEditing(false);
-    if (!initialName.trim() || initialName.trim() == projectName) {
+    if (!initialName.trim() || initialName.trim() === projectName) {
       setInitialName(projectName);
       return;
     }
-    toast.promise(
-      new Promise((resolve, reject) => {
-        updateProject.mutate(
-          {
-            id: projectId,
-            name: initialName,
-          },
-          {
-            onSuccess: (data) => {
-              resolve(data);
-              void queryClient.invalidateQueries(
-                trpc.project.findOne.queryOptions({ id: projectId }),
-              );
-              void queryClient.invalidateQueries(
-                trpc.project.findMany.queryOptions(),
-              );
-            },
-            onError: (error) => {
-              reject(error);
-            },
-          },
+
+    const promise = updateProject
+      .mutateAsync({
+        id: projectId,
+        name: initialName,
+      })
+      .then((project) => {
+        void queryClient.invalidateQueries(
+          trpc.project.findOne.queryOptions({ id: projectId }),
         );
-      }),
-      {
-        loading: "修改中请稍后...",
-        success: "项目名称修改成功～",
-        error: "项目名称修改失败",
-      },
-    );
+        void queryClient.invalidateQueries(
+          trpc.project.findMany.queryOptions(),
+        );
+        return project;
+      });
+
+    toast.promise(promise, {
+      loading: "修改中请稍后...",
+      success: "项目名称修改成功～",
+      error: "项目名称修改失败",
+    });
   };
 
   return (
@@ -80,7 +72,7 @@ export const ProjectNameInput = ({ projectId, projectName }: Props) => {
         />
       ) : (
         <div
-          className="cursor-pointer rounded-lg px-2.5 py-1.5 text-sm font-semibold text-slate-800 hover:bg-slate-100 hover:text-blue-600 dark:text-slate-200 dark:hover:bg-slate-800 dark:hover:text-blue-400"
+          className="cursor-pointer truncate rounded-lg px-2.5 py-1.5 text-sm font-semibold text-slate-800 hover:bg-slate-100 hover:text-blue-600 dark:text-slate-200 dark:hover:bg-slate-800 dark:hover:text-blue-400"
           onClick={() => setIsEditing(true)}
         >
           {projectName}

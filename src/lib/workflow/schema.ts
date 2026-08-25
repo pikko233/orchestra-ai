@@ -1,18 +1,17 @@
 import { z } from "zod";
+import { workflowSkillIds } from "@/lib/ai/skills/catalog";
 
 const identifierSchema = z
   .string()
   .trim()
   .min(1)
   .max(64)
-  .regex(
-    /^[A-Za-z0-9][A-Za-z0-9_-]*$/,
-    "只能包含字母、数字、下划线和连字符",
-  );
+  .regex(/^[A-Za-z0-9][A-Za-z0-9_-]*$/, "只能包含字母、数字、下划线和连字符");
 
 const optionalTextSchema = z.string().trim().min(1).max(2_000).optional();
 
 export const workflowToolRegistry = ["search", "save_memory"] as const;
+export const workflowChatModelRegistry = ["gpt-5.6-luna"] as const;
 
 export const workflowNodeTypeSchema = z.enum([
   "input",
@@ -52,17 +51,21 @@ export const inputNodeDataSchema = baseNodeDataSchema;
 export const agentNodeDataSchema = baseNodeDataSchema
   .extend({
     instructions: optionalTextSchema,
+    skills: z.array(z.enum(workflowSkillIds)).max(2).optional(),
   })
   .strict();
 
 export const subAgentNodeDataSchema = agentNodeDataSchema;
 
+const modelConfigShape = {
+  provider: z.string().trim().min(1).max(80).optional(),
+  endpoint: z.url().optional(),
+};
+
 export const modelNodeDataSchema = baseNodeDataSchema
   .extend({
-    provider: z.string().trim().min(1).max(80).optional(),
-    modelName: z.string().trim().min(1).max(160),
-    endpoint: z.url().optional(),
-    credentialId: identifierSchema.optional(),
+    ...modelConfigShape,
+    modelName: z.enum(workflowChatModelRegistry),
   })
   .strict();
 
@@ -73,8 +76,10 @@ export const toolNodeDataSchema = baseNodeDataSchema
   })
   .strict();
 
-export const embeddingModelNodeDataSchema = modelNodeDataSchema
+export const embeddingModelNodeDataSchema = baseNodeDataSchema
   .extend({
+    ...modelConfigShape,
+    modelName: z.string().trim().min(1).max(160),
     dimensions: z.number().int().positive().optional(),
   })
   .strict();
@@ -83,7 +88,6 @@ export const vectorDBNodeDataSchema = baseNodeDataSchema
   .extend({
     provider: z.string().trim().min(1).max(80).optional(),
     endpoint: z.url().optional(),
-    credentialId: identifierSchema.optional(),
     collection: z.string().trim().min(1).max(160).optional(),
   })
   .strict();
@@ -223,25 +227,7 @@ export const workflowSpecSchema = z
       const validKinds: Partial<
         Record<WorkflowConnectionKind, [WorkflowNodeType[], WorkflowNodeType[]]>
       > = {
-        flow: [
-          [
-            "input",
-            "agent",
-            "subAgent",
-            "model",
-            "tool",
-            "embeddingModel",
-            "vectorDB",
-          ],
-          [
-            "agent",
-            "subAgent",
-            "model",
-            "tool",
-            "embeddingModel",
-            "vectorDB",
-          ],
-        ],
+        flow: [["input", "agent", "subAgent"], ["agent", "subAgent"]],
         tool: [["agent", "subAgent"], ["tool"]],
         model: [["agent", "subAgent"], ["model"]],
         context: [["vectorDB"], ["agent", "subAgent", "model"]],
@@ -267,11 +253,11 @@ export const workflowSpecSchema = z
 export const orchestraNodeDataSchema = baseNodeDataSchema
   .extend({
     instructions: optionalTextSchema,
+    skills: z.array(z.enum(workflowSkillIds)).max(2).optional(),
     registryKey: z.enum(workflowToolRegistry).optional(),
     provider: z.string().trim().min(1).max(80).optional(),
     modelName: z.string().trim().min(1).max(160).optional(),
     endpoint: z.url().optional(),
-    credentialId: identifierSchema.optional(),
     collection: z.string().trim().min(1).max(160).optional(),
     dimensions: z.number().int().positive().optional(),
     running: z.boolean().optional(),

@@ -4,11 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "next dev",
+    "dev": "NODE_USE_ENV_PROXY=1 next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:workflow": "tsx --test src/lib/workflow/*.test.ts",
+    "test:workflow": "tsx --test src/lib/workflow/*.test.ts src/lib/workflow/runtime/*.test.ts",
     "db:migrate": "drizzle-kit migrate",
     "ai:memory:setup": "tsx src/scripts/setup-ai-memory.ts"
   },
@@ -16,6 +16,7 @@
     "@base-ui/react": "^1.7.0",
     "@better-auth/drizzle-adapter": "^1.7.1",
     "@langchain/core": "^1.2.9",
+    "@langchain/langgraph": "^1.4.12",
     "@langchain/langgraph-checkpoint-postgres": "^1.0.5",
     "@langchain/openai": "^1.5.9",
     "@shadcn/react": "^0.3.0",

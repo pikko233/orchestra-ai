@@ -1,7 +1,7 @@
 import {
   DEFAULT_PAGE,
   DEFAULT_PAGE_SIZE,
-  MAX_PAGE_SZIE,
+  MAX_PAGE_SIZE,
   MIN_PAGE_SIZE,
 } from "@/constants";
 import { db } from "@/db";
@@ -16,7 +16,7 @@ export const projectProcedure = createTRPCRouter({
     .input(
       z.object({
         id: z.string().min(1),
-        name: z.string().min(1),
+        name: z.string().trim().min(1).max(50),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -39,7 +39,7 @@ export const projectProcedure = createTRPCRouter({
   create: protectedProcedure
     .input(
       z.object({
-        name: z.string().min(1),
+        name: z.string().trim().min(1).max(50),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -91,7 +91,7 @@ export const projectProcedure = createTRPCRouter({
           pageSize: z
             .number()
             .min(MIN_PAGE_SIZE)
-            .max(MAX_PAGE_SZIE)
+            .max(MAX_PAGE_SIZE)
             .default(DEFAULT_PAGE_SIZE),
           search: z.string().nullish(),
         })
@@ -104,29 +104,23 @@ export const projectProcedure = createTRPCRouter({
         pageSize = DEFAULT_PAGE_SIZE,
         search,
       } = input ?? {};
+      const condition = and(
+        eq(project.userId, userId),
+        search ? ilike(project.name, `%${search}%`) : undefined,
+      );
 
       const projects = await db
         .select()
         .from(project)
-        .where(
-          and(
-            eq(project.userId, userId),
-            search ? ilike(project.name, `%${search}%`) : undefined,
-          ),
-        )
-        .orderBy(desc(project.createdAt), desc(project.id))
+        .where(condition)
+        .orderBy(desc(project.updatedAt), desc(project.id))
         .offset((page - 1) * pageSize)
         .limit(pageSize);
 
       const [total] = await db
         .select({ count: count() })
         .from(project)
-        .where(
-          and(
-            eq(project.userId, userId),
-            search ? ilike(project.name, `%${search}%`) : undefined,
-          ),
-        );
+        .where(condition);
 
       const totalPages = Math.ceil(total.count / pageSize);
 

@@ -1,7 +1,7 @@
 "use client";
 
-import { Play, Sidebar } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Loader2, Maximize2, Minimize2, Play, Sidebar } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { ProjectFindOne } from "../../types";
 import { ProjectNameInput } from "../components/project-name-input";
 import { ChatPanel } from "../components/chat-panel";
@@ -9,6 +9,8 @@ import { authClient } from "@/lib/auth-client";
 import { useRouter } from "next/navigation";
 import type { WorkflowSpec } from "@/lib/workflow/schema";
 import { WorkflowCanvas } from "../components/workflow-canvas";
+import { useWorkflowRunner } from "../../hooks/use-workflow-runner";
+import { MarkdownContent } from "../components/markdown-content";
 
 interface Props {
   project: ProjectFindOne;
@@ -22,6 +24,12 @@ export const AIBuilder = ({ project }: Props) => {
   const [workflow, setWorkflow] = useState<WorkflowSpec | null>(
     project.workflow,
   );
+  const [workflowInput, setWorkflowInput] = useState("");
+  const [isOutputExpanded, setIsOutputExpanded] = useState(false);
+  const outputRef = useRef<HTMLDivElement>(null);
+  const { run, running, output, error, nodeStatuses } = useWorkflowRunner(
+    project.id,
+  );
 
   const router = useRouter();
   const session = authClient.useSession();
@@ -31,6 +39,16 @@ export const AIBuilder = ({ project }: Props) => {
       router.replace("/login");
     }
   }, [router, session.data?.user.id, session.isPending]);
+
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      if (outputRef.current) {
+        outputRef.current.scrollTop = outputRef.current.scrollHeight;
+      }
+    });
+
+    return () => cancelAnimationFrame(frame);
+  }, [isOutputExpanded, output]);
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -108,14 +126,82 @@ export const AIBuilder = ({ project }: Props) => {
             />
           </div>
 
-          <div className="flex items-center gap-3 text-slate-600">
-            <button className="bg-red-500 text-white p-1.5 rounded-md hover:bg-red-600">
-              <Play size={18} className="fill-current" />
+          <div className="flex items-center gap-2 text-slate-600">
+            <input
+              value={workflowInput}
+              onChange={(event) => setWorkflowInput(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key !== "Enter") return;
+                if (!workflow || running) return;
+                void run(workflowInput);
+              }}
+              aria-label="工作流输入"
+              placeholder="输入要交给工作流处理的内容"
+              className="h-8 w-72 rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-900"
+            />
+            <button
+              type="button"
+              onClick={() => void run(workflowInput)}
+              disabled={!workflow || !workflowInput.trim() || running}
+              aria-label={running ? "工作流运行中" : "运行工作流"}
+              title={workflow ? "运行工作流" : "请先创建工作流"}
+              className="rounded-md bg-red-500 p-1.5 text-white hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {running ? (
+                <Loader2 size={18} className="animate-spin" />
+              ) : (
+                <Play size={18} className="fill-current" />
+              )}
             </button>
           </div>
         </header>
-        <div className="min-h-0 flex-1">
-          <WorkflowCanvas workflow={workflow} />
+        <div className="relative min-h-0 flex-1">
+          <WorkflowCanvas workflow={workflow} nodeStatuses={nodeStatuses} />
+          {(output || error) && (
+            <div
+              className={`absolute z-10 flex flex-col overflow-hidden rounded-lg border border-slate-200 bg-white/95 text-sm shadow-xl dark:border-slate-700 dark:bg-slate-900/95 ${
+                isOutputExpanded
+                  ? "inset-4"
+                  : "right-4 bottom-4 h-36 w-[min(24rem,calc(100%-2rem))]"
+              }`}
+            >
+              <div className="flex h-10 shrink-0 items-center justify-between border-b border-slate-200 px-3 dark:border-slate-700">
+                <span className="font-medium text-slate-700 dark:text-slate-200">
+                  工作流输出
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setIsOutputExpanded((current) => !current)}
+                  aria-expanded={isOutputExpanded}
+                  aria-label={
+                    isOutputExpanded ? "收缩工作流输出" : "展开工作流输出"
+                  }
+                  title={isOutputExpanded ? "收缩" : "展开"}
+                  className="rounded-md p-1 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+                >
+                  {isOutputExpanded ? (
+                    <Minimize2 size={16} />
+                  ) : (
+                    <Maximize2 size={16} />
+                  )}
+                </button>
+              </div>
+              <div
+                ref={outputRef}
+                className="min-h-0 flex-1 overflow-y-auto p-3 [scrollbar-color:#94a3b8_transparent] scrollbar-thin dark:[scrollbar-color:#475569_transparent]"
+              >
+                {error ? (
+                  <p role="alert" className="text-red-600 dark:text-red-400">
+                    {error}
+                  </p>
+                ) : (
+                  <div className="text-slate-700 dark:text-slate-200">
+                    <MarkdownContent text={output} />
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </main>
     </div>

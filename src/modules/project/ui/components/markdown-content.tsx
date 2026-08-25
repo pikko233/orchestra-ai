@@ -138,7 +138,7 @@ const markdownComponents = {
   ),
 } satisfies Components;
 
-export const ConvertMarkdownToText = memo(function MarkdownBubble({
+export const MarkdownContent = memo(function MarkdownContent({
   text,
 }: {
   text: string;

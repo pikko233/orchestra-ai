@@ -81,6 +81,35 @@ test("rejects tools outside the registry", () => {
   assert.equal(result.success, false);
 });
 
+test("accepts registered agent skills", () => {
+  const result = workflowSpecSchema.safeParse({
+    ...validWorkflow,
+    nodes: validWorkflow.nodes.map((node) =>
+      node.type === "agent"
+        ? {
+            ...node,
+            data: { ...node.data, skills: ["frontend-design"] },
+          }
+        : node,
+    ),
+  });
+
+  assert.equal(result.success, true);
+});
+
+test("rejects unknown agent skills", () => {
+  const result = workflowSpecSchema.safeParse({
+    ...validWorkflow,
+    nodes: validWorkflow.nodes.map((node) =>
+      node.type === "agent"
+        ? { ...node, data: { ...node.data, skills: ["unknown"] } }
+        : node,
+    ),
+  });
+
+  assert.equal(result.success, false);
+});
+
 test("rejects self connections", () => {
   const result = workflowSpecSchema.safeParse({
     ...validWorkflow,
@@ -99,6 +128,55 @@ test("rejects incompatible semantic connection kinds", () => {
     connections: [
       { id: "invalid-tool", from: "input", to: "search", kind: "tool" },
     ],
+  });
+
+  assert.equal(result.success, false);
+});
+
+test("rejects resource nodes in the control flow", () => {
+  const result = workflowSpecSchema.safeParse({
+    ...validWorkflow,
+    connections: [
+      { id: "invalid-flow", from: "input", to: "search", kind: "flow" },
+    ],
+  });
+
+  assert.equal(result.success, false);
+});
+
+test("rejects unsupported chat model names", () => {
+  const result = workflowSpecSchema.safeParse({
+    version: 1,
+    nodes: [
+      validWorkflow.nodes[0],
+      {
+        id: "model",
+        type: "model",
+        data: { label: "Model", modelName: "GPT" },
+      },
+    ],
+    connections: [],
+  });
+
+  assert.equal(result.success, false);
+});
+
+test("rejects unsupported credential references", () => {
+  const result = workflowSpecSchema.safeParse({
+    version: 1,
+    nodes: [
+      validWorkflow.nodes[0],
+      {
+        id: "model",
+        type: "model",
+        data: {
+          label: "Model",
+          modelName: "gpt-5.6-luna",
+          credentialId: "custom-key",
+        },
+      },
+    ],
+    connections: [],
   });
 
   assert.equal(result.success, false);
