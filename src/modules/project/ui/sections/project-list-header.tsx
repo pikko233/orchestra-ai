@@ -38,24 +38,18 @@ export const ProjectListHeader = () => {
   const createProject = useMutation(trpc.project.create.mutationOptions());
 
   const handleCreateProject = () => {
-    toast.promise(
-      new Promise(async (resolve, reject) => {
-        createProject.mutate(
-          { name: "Untitled Project" },
-          {
-            onSuccess: (data) => {
-              resolve(data);
-              void queryClient.invalidateQueries(
-                trpc.project.findMany.queryOptions(),
-              );
-              router.push(`/project/${data.id}`);
-            },
-            onError: (error) => {
-              reject(error);
-            },
-          },
+    const promise = createProject
+      .mutateAsync({ name: "Untitled Project" })
+      .then((project) => {
+        void queryClient.invalidateQueries(
+          trpc.project.findMany.queryOptions(),
         );
-      }),
+        router.push(`/project/${project.id}`);
+        return project;
+      });
+
+    toast.promise(
+      promise,
       {
         loading: "项目创建中...",
         success: "项目创建成功",

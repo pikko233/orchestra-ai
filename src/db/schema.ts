@@ -127,21 +127,27 @@ export const accountRelations = relations(account, ({ one }) => ({
   }),
 }));
 
-export const project = pgTable("project", {
-  id: text("id")
-    .primaryKey()
-    .$default(() => nanoid()),
-  name: text("name").notNull(),
-  userId: text("user_id")
-    .references(() => user.id, { onDelete: "cascade" })
-    .notNull(),
-  workflow: jsonb("workflow").$type<WorkflowSpec>(),
-  revision: integer("revision").default(0).notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at")
-    .$onUpdate(() => new Date())
-    .notNull(),
-});
+export const project = pgTable(
+  "project",
+  {
+    id: text("id")
+      .primaryKey()
+      .$default(() => nanoid()),
+    name: text("name").notNull(),
+    userId: text("user_id")
+      .references(() => user.id, { onDelete: "cascade" })
+      .notNull(),
+    workflow: jsonb("workflow").$type<WorkflowSpec>(),
+    revision: integer("revision").default(0).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at")
+      .$onUpdate(() => new Date())
+      .notNull(),
+  },
+  (table) => [
+    index("project_projectId_updatedAt_idx").on(table.id, table.updatedAt),
+  ],
+);
 
 export const conversation = pgTable(
   "conversation",

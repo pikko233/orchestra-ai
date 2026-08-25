@@ -19,6 +19,7 @@ import { nodeTypes } from "@/components/node/types";
 import { NODE_THEMES } from "@/components/node/themes";
 import { toReactFlow, type WorkflowFlowNode } from "@/lib/workflow/react-flow";
 import type { WorkflowSpec } from "@/lib/workflow/schema";
+import type { WorkflowNodeStatus } from "@/modules/project/hooks/use-workflow-runner";
 
 const miniMapColors: Record<string, string> = {
   agent: NODE_THEMES.agent.accent,
@@ -32,9 +33,10 @@ const miniMapColors: Record<string, string> = {
 
 interface Props {
   workflow: WorkflowSpec | null;
+  nodeStatuses: Record<string, WorkflowNodeStatus>;
 }
 
-export function WorkflowCanvas({ workflow }: Props) {
+export function WorkflowCanvas({ workflow, nodeStatuses }: Props) {
   const initial = workflow ? toReactFlow(workflow) : { nodes: [], edges: [] };
   const [nodes, setNodes, onNodesChange] = useNodesState<WorkflowFlowNode>(
     initial.nodes,
@@ -51,6 +53,15 @@ export function WorkflowCanvas({ workflow }: Props) {
       void instanceRef.current?.fitView({ padding: 0.2, maxZoom: 1 });
     });
   }, [setEdges, setNodes, workflow]);
+
+  useEffect(() => {
+    setNodes((current) =>
+      current.map((node) => ({
+        ...node,
+        data: { ...node.data, status: nodeStatuses[node.id] ?? "idle" },
+      })),
+    );
+  }, [nodeStatuses, setNodes]);
 
   const onConnect = useCallback(
     (connection: Connection) => {

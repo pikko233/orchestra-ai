@@ -46,7 +46,14 @@ export function NodeCard({
   handles,
   footer,
 }: NodeCardProps) {
-  const isRunning = data.running || data.status === "running";
+  const status = data.status ?? (data.running ? "running" : "idle");
+  const isRunning = status === "running";
+  const statusColor = {
+    idle: THEME.idle,
+    running: THEME.active,
+    success: "#22c55e",
+    error: "#ef4444",
+  }[status];
   const subtitle =
     data.sub ??
     data.description ??
@@ -58,7 +65,12 @@ export function NodeCard({
     <div
       className="relative min-w-60 overflow-visible rounded-md border border-slate-200 bg-white shadow-[0_12px_32px_rgba(15,23,42,0.14)] transition-all duration-300 dark:border-slate-800 dark:bg-slate-950 dark:shadow-[0_12px_32px_rgba(0,0,0,0.72)]!"
       style={{
-        borderColor: selected || isRunning ? nodeTheme.border : undefined,
+        borderColor:
+          status === "error"
+            ? statusColor
+            : selected || isRunning
+              ? nodeTheme.border
+              : undefined,
         boxShadow:
           selected || isRunning
             ? `0 0 0 2px ${nodeTheme.soft}, 0 12px 32px rgba(15, 23, 42, 0.16)`
@@ -81,9 +93,9 @@ export function NodeCard({
           </span>
         </div>
         <span
-          aria-label={isRunning ? "Running" : "Idle"}
+          aria-label={status}
           className={`h-2 w-2 rounded-full ${isRunning ? "animate-pulse" : ""}`}
-          style={{ backgroundColor: isRunning ? THEME.active : THEME.idle }}
+          style={{ backgroundColor: statusColor }}
         />
       </div>
 

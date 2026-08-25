@@ -9,6 +9,6 @@ export const llm = new ChatOpenAI({
     summary: "auto",
   },
   timeout: 120_000,
-  maxTokens: 10_000,
+  maxTokens: 3_000,
   maxRetries: 3,
 });

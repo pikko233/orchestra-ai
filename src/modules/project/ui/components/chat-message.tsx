@@ -1,20 +1,17 @@
 import { memo, useState } from "react";
 
 import type { message as messageTable } from "@/db/schema";
+import type { AgentTodo } from "@/lib/ai/todos";
 import { cn } from "@/lib/utils";
-import {
-  ChevronDown,
-  ChevronRight,
-  Loader2,
-} from "lucide-react";
-import { ConvertMarkdownToText } from "./convert-markdown-to-text";
+import { ChevronDown, ChevronRight, CircleAlert, Loader2 } from "lucide-react";
+import { MarkdownContent } from "./markdown-content";
 
 type DbMessage = typeof messageTable.$inferSelect;
 
 export type ChatMessageData = Pick<
   DbMessage,
   "id" | "role" | "content" | "reasoning" | "status" | "error"
->;
+> & { todos?: AgentTodo[] };
 
 interface Props {
   message: ChatMessageData;
@@ -79,7 +76,19 @@ export const ChatMessage = memo(function Message({ message, loading }: Props) {
         <p className="whitespace-pre-line leading-relaxed">{message.content}</p>
       ) : (
         <div className="prose prose-sm max-w-none text-sm leading-relaxed dark:prose-invert">
-          <ConvertMarkdownToText text={message.content} />
+          <MarkdownContent text={message.content} />
+        </div>
+      )}
+      {message.status === "failed" && message.error && (
+        <div
+          role="alert"
+          className="mt-2 flex items-start gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-900 dark:bg-red-950/50 dark:text-red-300"
+        >
+          <CircleAlert
+            aria-hidden="true"
+            className="mt-0.5 size-3.5 shrink-0"
+          />
+          <span>{message.error}</span>
         </div>
       )}
     </div>
