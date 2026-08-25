@@ -145,7 +145,11 @@ export const project = pgTable(
       .notNull(),
   },
   (table) => [
-    index("project_projectId_updatedAt_idx").on(table.id, table.updatedAt),
+    index("project_userId_updatedAt_id_idx").on(
+      table.userId,
+      table.updatedAt,
+      table.id,
+    ),
   ],
 );
 

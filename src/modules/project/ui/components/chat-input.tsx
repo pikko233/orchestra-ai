@@ -36,6 +36,8 @@ export const ChatInput = ({ input, setInput, sendMessage, loading }: Props) => {
           </button>
 
           <button
+            type="button"
+            aria-label="发送"
             onClick={sendMessage}
             disabled={!input.trim() || loading}
             className={cn(

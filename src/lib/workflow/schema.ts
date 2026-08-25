@@ -60,7 +60,6 @@ export const subAgentNodeDataSchema = agentNodeDataSchema;
 const modelConfigShape = {
   provider: z.string().trim().min(1).max(80).optional(),
   endpoint: z.url().optional(),
-  credentialId: identifierSchema.optional(),
 };
 
 export const modelNodeDataSchema = baseNodeDataSchema
@@ -89,7 +88,6 @@ export const vectorDBNodeDataSchema = baseNodeDataSchema
   .extend({
     provider: z.string().trim().min(1).max(80).optional(),
     endpoint: z.url().optional(),
-    credentialId: identifierSchema.optional(),
     collection: z.string().trim().min(1).max(160).optional(),
   })
   .strict();
@@ -260,7 +258,6 @@ export const orchestraNodeDataSchema = baseNodeDataSchema
     provider: z.string().trim().min(1).max(80).optional(),
     modelName: z.string().trim().min(1).max(160).optional(),
     endpoint: z.url().optional(),
-    credentialId: identifierSchema.optional(),
     collection: z.string().trim().min(1).max(160).optional(),
     dimensions: z.number().int().positive().optional(),
     running: z.boolean().optional(),

@@ -160,3 +160,24 @@ test("rejects unsupported chat model names", () => {
 
   assert.equal(result.success, false);
 });
+
+test("rejects unsupported credential references", () => {
+  const result = workflowSpecSchema.safeParse({
+    version: 1,
+    nodes: [
+      validWorkflow.nodes[0],
+      {
+        id: "model",
+        type: "model",
+        data: {
+          label: "Model",
+          modelName: "gpt-5.6-luna",
+          credentialId: "custom-key",
+        },
+      },
+    ],
+    connections: [],
+  });
+
+  assert.equal(result.success, false);
+});

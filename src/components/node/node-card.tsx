@@ -54,6 +54,12 @@ export function NodeCard({
     success: "#22c55e",
     error: "#ef4444",
   }[status];
+  const statusLabel = {
+    idle: "空闲",
+    running: "运行中",
+    success: "运行成功",
+    error: "运行失败",
+  }[status];
   const subtitle =
     data.sub ??
     data.description ??
@@ -93,7 +99,7 @@ export function NodeCard({
           </span>
         </div>
         <span
-          aria-label={status}
+          aria-label={statusLabel}
           className={`h-2 w-2 rounded-full ${isRunning ? "animate-pulse" : ""}`}
           style={{ backgroundColor: statusColor }}
         />

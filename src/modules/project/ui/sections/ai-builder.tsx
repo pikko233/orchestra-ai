@@ -131,7 +131,9 @@ export const AIBuilder = ({ project }: Props) => {
               value={workflowInput}
               onChange={(event) => setWorkflowInput(event.target.value)}
               onKeyDown={(event) => {
-                if (event.key === "Enter") void run(workflowInput);
+                if (event.key !== "Enter") return;
+                if (!workflow || running) return;
+                void run(workflowInput);
               }}
               aria-label="工作流输入"
               placeholder="输入要交给工作流处理的内容"
@@ -171,7 +173,9 @@ export const AIBuilder = ({ project }: Props) => {
                   type="button"
                   onClick={() => setIsOutputExpanded((current) => !current)}
                   aria-expanded={isOutputExpanded}
-                  aria-label={isOutputExpanded ? "收缩工作流输出" : "展开工作流输出"}
+                  aria-label={
+                    isOutputExpanded ? "收缩工作流输出" : "展开工作流输出"
+                  }
                   title={isOutputExpanded ? "收缩" : "展开"}
                   className="rounded-md p-1 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
                 >
