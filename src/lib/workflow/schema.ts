@@ -10,8 +10,20 @@ const identifierSchema = z
 
 const optionalTextSchema = z.string().trim().min(1).max(2_000).optional();
 
-export const workflowToolRegistry = ["search", "save_memory"] as const;
-export const workflowChatModelRegistry = ["gpt-5.6-luna"] as const;
+export const workflowToolRegistry = [
+  "search",
+  "save_memory",
+  "delegate_tasks",
+  "send_email",
+  "google_calendar",
+] as const;
+export const workflowChatModelRegistry = [
+  "gpt-5.6-luna",
+  "gpt-4o",
+  "gpt-4o-mini",
+] as const;
+export type WorkflowChatModelName =
+  (typeof workflowChatModelRegistry)[number];
 
 export const workflowNodeTypeSchema = z.enum([
   "input",

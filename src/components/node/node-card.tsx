@@ -69,7 +69,7 @@ export function NodeCard({
 
   return (
     <div
-      className="relative min-w-60 overflow-visible rounded-md border border-slate-200 bg-white shadow-[0_12px_32px_rgba(15,23,42,0.14)] transition-all duration-300 dark:border-slate-800 dark:bg-slate-950 dark:shadow-[0_12px_32px_rgba(0,0,0,0.72)]!"
+      className="relative min-w-56 overflow-visible rounded-md border border-slate-200 bg-white shadow-[0_12px_32px_rgba(15,23,42,0.14)] transition-all duration-300 dark:border-slate-800 dark:bg-slate-950 dark:shadow-[0_12px_32px_rgba(0,0,0,0.72)]!"
       style={{
         borderColor:
           status === "error"

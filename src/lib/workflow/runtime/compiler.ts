@@ -19,6 +19,22 @@ export class WorkflowCompileError extends Error {
 const isAgent = (node: WorkflowNode): node is AgentNode =>
   node.type === "agent" || node.type === "subAgent";
 
+export function getWorkflowOutputNodeIds(workflow: WorkflowSpec) {
+  const agents = workflow.nodes.filter(isAgent);
+  const agentIds = new Set(agents.map(({ id }) => id));
+  const nodesWithSuccessors = new Set(
+    workflow.connections
+      .filter(({ from, kind }) => kind === "flow" && agentIds.has(from))
+      .map(({ from }) => from),
+  );
+
+  return new Set(
+    agents
+      .filter(({ id }) => !nodesWithSuccessors.has(id))
+      .map(({ id }) => id),
+  );
+}
+
 export async function compileWorkflow(
   workflow: WorkflowSpec,
   options: { store?: BaseStore } = {},

@@ -44,7 +44,9 @@ const markdownComponents = {
   h4: ({ children }) => (
     <h4 className="mt-4 mb-2 font-semibold first:mt-0">{children}</h4>
   ),
-  p: ({ children }) => <p className="mb-3 last:mb-0">{children}</p>,
+  p: ({ children }) => (
+    <p className="mb-3 break-words last:mb-0">{children}</p>
+  ),
   a: ({ children, href, title }) => (
     <a
       className="font-medium wrap-break-word text-primary underline underline-offset-4"
@@ -62,7 +64,7 @@ const markdownComponents = {
   ol: ({ children }) => (
     <ol className="my-3 list-decimal space-y-1 pl-6">{children}</ol>
   ),
-  li: ({ children }) => <li className="pl-1">{children}</li>,
+  li: ({ children }) => <li className="min-w-0 break-words pl-1">{children}</li>,
   blockquote: ({ children }) => (
     <blockquote className="my-4 border-l-4 border-border pl-4 text-muted-foreground italic">
       {children}
@@ -101,7 +103,7 @@ const markdownComponents = {
       </SyntaxHighlighter>
     ) : (
       <code
-        className={`rounded-md border border-slate-200 bg-slate-100 px-1.5 py-0.5 font-mono text-[0.85em] font-medium text-rose-600 dark:border-slate-700 dark:bg-slate-800 dark:text-rose-300 ${className ?? ""}`}
+        className={`break-all whitespace-normal rounded-md border border-slate-200 bg-slate-100 px-1.5 py-0.5 font-mono text-[0.85em] font-medium text-rose-600 dark:border-slate-700 dark:bg-slate-800 dark:text-rose-300 ${className ?? ""}`}
       >
         {children}
       </code>
@@ -144,12 +146,14 @@ export const MarkdownContent = memo(function MarkdownContent({
   text: string;
 }) {
   return (
-    <Markdown
-      remarkPlugins={[remarkGfm, remarkMath]}
-      rehypePlugins={[rehypeKatex]}
-      components={markdownComponents}
-    >
-      {normalizeMathDelimiters(text)}
-    </Markdown>
+    <div className="min-w-0 max-w-full break-words [overflow-wrap:anywhere]">
+      <Markdown
+        remarkPlugins={[remarkGfm, remarkMath]}
+        rehypePlugins={[rehypeKatex]}
+        components={markdownComponents}
+      >
+        {normalizeMathDelimiters(text)}
+      </Markdown>
+    </div>
   );
 });

@@ -5,6 +5,7 @@ import { ThemeProvider } from "next-themes";
 import { Toaster } from "@/components/ui/toast";
 import { TRPCReactProvider } from "@/trpc/client";
 import { NuqsAdapter } from "nuqs/adapters/next/app";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -39,8 +40,12 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             defaultTheme="system"
             disableTransitionOnChange
           >
-            <Toaster />
-            <TRPCReactProvider>{children}</TRPCReactProvider>
+            <TRPCReactProvider>
+              <TooltipProvider>
+                <Toaster />
+                {children}
+              </TooltipProvider>
+            </TRPCReactProvider>
           </ThemeProvider>
         </NuqsAdapter>
       </body>

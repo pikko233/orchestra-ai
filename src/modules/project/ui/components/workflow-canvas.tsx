@@ -5,6 +5,7 @@ import {
   addEdge,
   Background,
   BackgroundVariant,
+  ConnectionLineType,
   Controls,
   MiniMap,
   ReactFlow,
@@ -70,7 +71,7 @@ export function WorkflowCanvas({ workflow, nodeStatuses }: Props) {
           {
             ...connection,
             id: crypto.randomUUID(),
-            type: "smoothstep",
+            type: "bezier",
           },
           current,
         ),
@@ -88,6 +89,7 @@ export function WorkflowCanvas({ workflow, nodeStatuses }: Props) {
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
+        connectionLineType={ConnectionLineType.Bezier}
         onInit={(instance) => {
           instanceRef.current = instance;
         }}
@@ -96,7 +98,7 @@ export function WorkflowCanvas({ workflow, nodeStatuses }: Props) {
         minZoom={0.25}
         maxZoom={1.5}
         defaultEdgeOptions={{
-          type: "smoothstep",
+          type: "bezier",
           markerEnd: { type: MarkerType.ArrowClosed },
         }}
       >

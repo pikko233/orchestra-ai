@@ -26,7 +26,7 @@ const Page = async ({ params }: Props) => {
         fallback={
           <LoadingState
             title="正在加载项目"
-            description="正在准备项目工作区，请稍候。"
+            description="正在准备项目数据，请稍候。"
           />
         }
       >

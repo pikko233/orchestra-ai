@@ -24,6 +24,7 @@ test("lays dependencies rightward and tools below their agent", () => {
   const positions = layoutWorkflow(workflow);
 
   assert.ok(positions.input.x < positions.agent.x);
+  assert.equal(positions.agent.x - positions.input.x, 232);
   assert.equal(positions.agent.x, positions.tool.x);
   assert.ok(positions.agent.y < positions.tool.y);
 });
@@ -32,6 +33,7 @@ test("maps node types and semantic handles", () => {
   const result = toReactFlow(workflow);
 
   assert.equal(result.nodes[0].type, "inputNode");
+  assert.equal(result.edges[0].type, "bezier");
   assert.deepEqual(
     {
       sourceHandle: result.edges[1].sourceHandle,

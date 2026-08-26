@@ -5,6 +5,16 @@ import { readSse } from "@/lib/sse";
 
 export type WorkflowNodeStatus = "idle" | "running" | "success" | "error";
 
+export type DynamicSubAgentStatus = {
+  runId: string;
+  parentNodeId: string;
+  subAgentId: string;
+  role: string;
+  modelName: string;
+  status: "running" | "success" | "error";
+  error?: string;
+};
+
 export function useWorkflowRunner(projectId: string) {
   const [running, setRunning] = useState(false);
   const [output, setOutput] = useState("");
@@ -12,6 +22,7 @@ export function useWorkflowRunner(projectId: string) {
   const [nodeStatuses, setNodeStatuses] = useState<
     Record<string, WorkflowNodeStatus>
   >({});
+  const [subAgents, setSubAgents] = useState<DynamicSubAgentStatus[]>([]);
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => () => abortRef.current?.abort(), []);
@@ -27,6 +38,7 @@ export function useWorkflowRunner(projectId: string) {
       setOutput("");
       setError(undefined);
       setNodeStatuses({});
+      setSubAgents([]);
 
       try {
         const response = await fetch("/api/workflow/run", {
@@ -68,6 +80,29 @@ export function useWorkflowRunner(projectId: string) {
             setOutput((current) => current + data.delta);
           }
 
+          if (
+            event === "subagent" &&
+            typeof data.runId === "string" &&
+            typeof data.parentNodeId === "string" &&
+            typeof data.subAgentId === "string" &&
+            typeof data.role === "string" &&
+            typeof data.modelName === "string" &&
+            ["running", "success", "error"].includes(String(data.status))
+          ) {
+            const next = data as DynamicSubAgentStatus;
+            setSubAgents((current) => {
+              const index = current.findIndex(
+                (item) =>
+                  item.runId === next.runId &&
+                  item.subAgentId === next.subAgentId,
+              );
+              if (index === -1) return [...current, next];
+              return current.map((item, itemIndex) =>
+                itemIndex === index ? next : item,
+              );
+            });
+          }
+
           if (event === "error") {
             setError(
               typeof data.error === "string" ? data.error : "工作流运行失败",
@@ -89,5 +124,5 @@ export function useWorkflowRunner(projectId: string) {
     [projectId, running],
   );
 
-  return { run, running, output, error, nodeStatuses };
+  return { run, running, output, error, nodeStatuses, subAgents };
 }

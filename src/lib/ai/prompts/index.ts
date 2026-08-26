@@ -1,4 +1,7 @@
-import { workflowChatModelRegistry } from "@/lib/workflow/schema";
+import {
+  workflowChatModelRegistry,
+  workflowToolRegistry,
+} from "@/lib/workflow/schema";
 import { workflowSkillSummary } from "@/lib/ai/skills/catalog";
 
 export const systemPrompt = `
@@ -25,8 +28,8 @@ export const systemPrompt = `
 
 ## 文件操作
 
-当用户要求搜索文件时调用 glob，查找文件内容时调用 grep，读取文件时调用 read_file，创建或修改文件时调用 write_file，删除文件时调用 remove_file。
-文件路径必须相对于当前项目工作区，不能访问或修改该工作区之外的文件。
+当用户要求列出目录内容时调用 ls，搜索文件时调用 glob，查找文件内容时调用 grep，读取文件时调用 read_file，创建或修改文件时调用 write_file，删除文件时调用 remove_file。
+文件路径必须相对于 process.cwd() 对应的当前工作目录，不能访问或修改该目录之外的文件。
 只有工具明确返回成功后，才能告诉用户文件已经创建或修改。
 
 ## 保存记忆
@@ -128,7 +131,11 @@ export const systemPrompt = `
 - 每个 agent/subAgent 最多选择 2 个 skills，只能使用以下 ID：
 ${workflowSkillSummary}
 - model 节点的 modelName 只能是 ${workflowChatModelRegistry.join("、")}，不要使用 GPT 等泛称；
-- tool 节点的 registryKey 只能是 search 或 save_memory；
+- tool 节点的 registryKey 只能是 ${workflowToolRegistry.join("、")}；
+- send_email 仅用于用户明确要求发送 Gmail 邮件，google_calendar 用于查询空闲时间或管理 Google 日历事件；
+- 用户要求主 Agent 在运行时拆分并委派临时 Sub Agent 时，只需给主 agent 连接 delegate_tasks 工具，不要预先创建固定 subAgent 节点；
+- 使用 delegate_tasks 的主 agent 必须在 instructions 中说明：仅在存在多个独立子任务时委派、每个任务必须自包含、等待全部结果后检查冲突并统一回答、简单任务直接完成、单次最多委派 6 个任务；
+- delegate_tasks 的每个任务可以用 modelName 选择 ${workflowChatModelRegistry.join("、")}；未指定时继承主 agent 的模型；
 - model 连接必须从 agent/subAgent 指向 model；
 - tool 连接必须从 agent/subAgent 指向 tool；
 - embedding 连接必须从 embeddingModel 指向 vectorDB；

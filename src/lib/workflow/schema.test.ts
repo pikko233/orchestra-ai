@@ -81,6 +81,34 @@ test("rejects tools outside the registry", () => {
   assert.equal(result.success, false);
 });
 
+test("accepts the dynamic delegation tool", () => {
+  const result = workflowSpecSchema.safeParse({
+    ...validWorkflow,
+    nodes: validWorkflow.nodes.map((node) =>
+      node.type === "tool"
+        ? { ...node, data: { ...node.data, registryKey: "delegate_tasks" } }
+        : node,
+    ),
+  });
+
+  assert.equal(result.success, true);
+});
+
+test("accepts Google Workspace tools", () => {
+  for (const registryKey of ["send_email", "google_calendar"]) {
+    const result = workflowSpecSchema.safeParse({
+      ...validWorkflow,
+      nodes: validWorkflow.nodes.map((node) =>
+        node.type === "tool"
+          ? { ...node, data: { ...node.data, registryKey } }
+          : node,
+      ),
+    });
+
+    assert.equal(result.success, true);
+  }
+});
+
 test("accepts registered agent skills", () => {
   const result = workflowSpecSchema.safeParse({
     ...validWorkflow,
@@ -159,6 +187,25 @@ test("rejects unsupported chat model names", () => {
   });
 
   assert.equal(result.success, false);
+});
+
+test("accepts registered GPT-4o model names", () => {
+  for (const modelName of ["gpt-4o", "gpt-4o-mini"]) {
+    const result = workflowSpecSchema.safeParse({
+      version: 1,
+      nodes: [
+        validWorkflow.nodes[0],
+        {
+          id: `model-${modelName}`,
+          type: "model",
+          data: { label: "Model", modelName },
+        },
+      ],
+      connections: [],
+    });
+
+    assert.equal(result.success, true);
+  }
 });
 
 test("rejects unsupported credential references", () => {
