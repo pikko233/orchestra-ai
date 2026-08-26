@@ -16,6 +16,7 @@ export const workflowToolRegistry = [
   "delegate_tasks",
   "send_email",
   "google_calendar",
+  "create_calendar_event",
 ] as const;
 export const workflowChatModelRegistry = [
   "gpt-5.6-luna",
@@ -284,5 +285,13 @@ export type WorkflowConnectionKind = z.infer<
 export type WorkflowSpec = z.infer<typeof workflowSpecSchema>;
 export type WorkflowNode = WorkflowSpec["nodes"][number];
 export type WorkflowConnection = WorkflowSpec["connections"][number];
+export function workflowRequiresWriteConfirmation(workflow: WorkflowSpec) {
+  return workflow.nodes.some(
+    (node) =>
+      node.type === "tool" &&
+      (node.data.registryKey === "send_email" ||
+        node.data.registryKey === "create_calendar_event"),
+  );
+}
 export type OrchestraNodeData = z.infer<typeof orchestraNodeDataSchema> &
   Record<string, unknown>;

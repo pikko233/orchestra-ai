@@ -29,6 +29,8 @@ const MAX_GREP_RESULTS = 50;
 const MAX_FILE_BYTES = 512_000;
 const MAX_READ_CHARACTERS = 100_000;
 const READ_TRUNCATION_NOTICE = "\n...文件内容已截断";
+const SENSITIVE_DIRECTORIES = new Set([".git", ".ssh", ".aws"]);
+const SENSITIVE_FILES = new Set([".npmrc", ".pypirc", ".netrc"]);
 
 const pathSchema = z
   .string()
@@ -41,6 +43,33 @@ function isInside(root: string, target: string) {
   return path === "" || (!path.startsWith(`..${sep}`) && path !== "..");
 }
 
+function isSensitivePath(filePath: string) {
+  return filePath
+    .replaceAll("\\", "/")
+    .split("/")
+    .filter(Boolean)
+    .some((part) => {
+      const name = part.toLowerCase();
+      return (
+        SENSITIVE_DIRECTORIES.has(name) ||
+        name.startsWith(".env") ||
+        SENSITIVE_FILES.has(name) ||
+        /\.(?:key|pem|p12|pfx)$/.test(name) ||
+        /^id_(?:rsa|dsa|ecdsa|ed25519)(?:\.pub)?$/.test(name) ||
+        (/\.(?:json|ya?ml|toml|ini|conf)$/.test(name) &&
+          /(?:^|[-_.])(?:credentials?|client[-_]?secret|service[-_]?account|application_default_credentials)(?:[-_.]|$)/.test(
+            name,
+          ))
+      );
+    });
+}
+
+function assertResolvedPathIsSafe(root: string, target: string) {
+  if (isSensitivePath(relative(root, target))) {
+    throw new Error("禁止访问敏感文件或目录");
+  }
+}
+
 async function resolveWorkingDirectory() {
   return realpath(process.cwd());
 }
@@ -49,6 +78,7 @@ function resolveWorkingPath(root: string, filePath: string) {
   if (isAbsolute(filePath) || win32.isAbsolute(filePath)) {
     throw new Error("只能使用当前工作目录内的相对路径");
   }
+  if (isSensitivePath(filePath)) throw new Error("禁止访问敏感文件或目录");
 
   const target = resolve(root, filePath);
   if (!isInside(root, target)) {
@@ -70,6 +100,7 @@ async function resolveReadPath(root: string, filePath: string) {
   if (!isInside(root, realTarget)) {
     throw new Error("禁止通过符号链接访问当前工作目录之外的文件");
   }
+  assertResolvedPathIsSafe(root, realTarget);
 
   const info = await stat(realTarget);
   if (!info.isFile()) throw new Error("指定路径不是文件");
@@ -82,6 +113,7 @@ async function resolveDirectoryPath(root: string, directoryPath: string) {
   if (!isInside(root, realTarget)) {
     throw new Error("禁止通过符号链接访问当前工作目录之外的目录");
   }
+  assertResolvedPathIsSafe(root, realTarget);
 
   const info = await stat(realTarget);
   if (!info.isDirectory()) throw new Error("指定路径不是目录");
@@ -149,6 +181,7 @@ async function resolveWritePath(root: string, filePath: string) {
   if (!isInside(root, realParent)) {
     throw new Error("禁止通过符号链接修改当前工作目录之外的文件");
   }
+  assertResolvedPathIsSafe(root, realParent);
 
   return join(realParent, basename(target));
 }
@@ -166,6 +199,7 @@ async function resolveRemovePath(root: string, filePath: string) {
   if (!isInside(root, realParent)) {
     throw new Error("禁止通过符号链接删除当前工作目录之外的文件");
   }
+  assertResolvedPathIsSafe(root, realParent);
 
   const removeTarget = join(realParent, basename(target));
   const info = await lstat(removeTarget);
@@ -178,7 +212,8 @@ function validateGlobPattern(pattern: string) {
   if (
     isAbsolute(pattern) ||
     win32.isAbsolute(pattern) ||
-    pattern.split(/[\\/]/).includes("..")
+    pattern.split(/[\\/]/).includes("..") ||
+    isSensitivePath(pattern)
   ) {
     throw new Error("搜索模式只能匹配当前工作目录内的相对路径");
   }
@@ -200,6 +235,7 @@ async function* walkFiles(
   for (const entry of entries) {
     const path = join(realDirectory, entry.name);
     if (entry.isFile()) {
+      if (isSensitivePath(relative(root, path))) continue;
       const realFile = await realpath(path);
       if (!isInside(root, realFile)) {
         throw new Error("禁止通过符号链接搜索当前工作目录之外的文件");
@@ -313,9 +349,9 @@ export const lsTool = tool(
   async ({ path }) => {
     const root = await resolveWorkingDirectory();
     const target = await resolveLsDirectoryPath(root, path);
-    const entries = (await readdir(target, { withFileTypes: true })).sort(
-      (left, right) => left.name.localeCompare(right.name),
-    );
+    const entries = (await readdir(target, { withFileTypes: true }))
+      .filter((entry) => !isSensitivePath(entry.name))
+      .sort((left, right) => left.name.localeCompare(right.name));
 
     if (entries.length === 0) return "目录为空";
     const items = entries.slice(0, MAX_LS_RESULTS).map((entry) => {

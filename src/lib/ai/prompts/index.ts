@@ -132,7 +132,8 @@ export const systemPrompt = `
 ${workflowSkillSummary}
 - model 节点的 modelName 只能是 ${workflowChatModelRegistry.join("、")}，不要使用 GPT 等泛称；
 - tool 节点的 registryKey 只能是 ${workflowToolRegistry.join("、")}；
-- send_email 仅用于用户明确要求发送 Gmail 邮件，google_calendar 用于查询空闲时间或管理 Google 日历事件；
+- send_email 仅用于发送 Gmail 邮件，google_calendar 仅用于只读查询日历，create_calendar_event 用于创建日历事件；
+- 发送邮件或创建日历事件属于外部写操作，只有用户明确要求时才连接或调用对应工具；
 - 用户要求主 Agent 在运行时拆分并委派临时 Sub Agent 时，只需给主 agent 连接 delegate_tasks 工具，不要预先创建固定 subAgent 节点；
 - 使用 delegate_tasks 的主 agent 必须在 instructions 中说明：仅在存在多个独立子任务时委派、每个任务必须自包含、等待全部结果后检查冲突并统一回答、简单任务直接完成、单次最多委派 6 个任务；
 - delegate_tasks 的每个任务可以用 modelName 选择 ${workflowChatModelRegistry.join("、")}；未指定时继承主 agent 的模型；

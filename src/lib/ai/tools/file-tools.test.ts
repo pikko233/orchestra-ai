@@ -21,6 +21,15 @@ test("limits file tools to process.cwd()", async () => {
     await mkdir(join(workspace, "nested"), { recursive: true });
     await mkdir(join(workspace, "src/lib/ai/skills"), { recursive: true });
     await writeFile(join(workspace, "inside.txt"), "hello", "utf8");
+    await writeFile(join(workspace, ".env.local"), "API_KEY=secret", "utf8");
+    await writeFile(join(workspace, "private.pem"), "private", "utf8");
+    await writeFile(
+      join(workspace, "service-account.json"),
+      '{"private_key":"secret"}',
+      "utf8",
+    );
+    await mkdir(join(workspace, ".git"));
+    await writeFile(join(workspace, ".git/config"), "secret", "utf8");
     await writeFile(join(workspace, "long.txt"), "a".repeat(100_001), "utf8");
     await writeFile(
       join(workspace, "oversized.txt"),
@@ -44,6 +53,8 @@ test("limits file tools to process.cwd()", async () => {
       join(outside, "secret.txt"),
       join(workspace, "outside-file-link"),
     );
+    await symlink(join(workspace, ".env.local"), join(workspace, "env-link"));
+    await symlink(join(workspace, ".git"), join(workspace, "git-link"));
     process.chdir(workspace);
 
     assert.equal(await readFileTool.invoke({ path: "inside.txt" }), "hello");
@@ -110,6 +121,41 @@ test("limits file tools to process.cwd()", async () => {
         ignoreCase: true,
       }),
       "nested/result.js:1:const result = 'Needle';",
+    );
+
+    for (const path of [
+      ".env.local",
+      ".git/config",
+      "private.pem",
+      "service-account.json",
+      "env-link",
+    ]) {
+      await assert.rejects(readFileTool.invoke({ path }), /敏感文件或目录/);
+    }
+    await assert.rejects(
+      writeFileTool.invoke({ path: ".env.test", content: "secret" }),
+      /敏感文件或目录/,
+    );
+    await assert.rejects(
+      writeFileTool.invoke({ path: "git-link/config", content: "changed" }),
+      /敏感文件或目录/,
+    );
+    await assert.rejects(removeFileTool.invoke({ path: "private.pem" }), /敏感/);
+    await assert.rejects(removeFileTool.invoke({ path: "git-link/config" }), /敏感/);
+    await assert.rejects(lsTool.invoke({ path: "git-link" }), /敏感/);
+    await assert.rejects(globTool.invoke({ pattern: ".env*" }));
+    const rootEntries = await lsTool.invoke({ path: "." });
+    assert.doesNotMatch(rootEntries, /\.env|\.git|private\.pem|service-account/);
+    const allFiles = await globTool.invoke({ pattern: "**/*" });
+    assert.doesNotMatch(allFiles, /\.env|\.git|private\.pem|service-account/);
+    assert.equal(await readFile(join(workspace, ".git/config"), "utf8"), "secret");
+    assert.equal(
+      await grepTool.invoke({
+        query: "secret",
+        pattern: "**/*",
+        ignoreCase: false,
+      }),
+      "未找到匹配内容",
     );
 
     const outsidePath = relative(workspace, join(outside, "secret.txt"));

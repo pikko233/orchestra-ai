@@ -42,3 +42,19 @@ test("maps node types and semantic handles", () => {
     { sourceHandle: "tools", targetHandle: "in" },
   );
 });
+
+test("uses the rendered width when spacing regular nodes", () => {
+  const regularWorkflow = {
+    version: 1,
+    nodes: [
+      { id: "first", type: "agent", data: { label: "First" } },
+      { id: "second", type: "agent", data: { label: "Second" } },
+    ],
+    connections: [
+      { id: "first-second", from: "first", to: "second", kind: "flow" },
+    ],
+  } satisfies WorkflowSpec;
+  const positions = layoutWorkflow(regularWorkflow);
+
+  assert.equal(positions.second.x - positions.first.x, 344);
+});

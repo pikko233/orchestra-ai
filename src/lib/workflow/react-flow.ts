@@ -17,7 +17,7 @@ export type WorkflowFlowNode = Node<
   | "vectorDB"
 >;
 
-const DEFAULT_NODE_SIZE = { width: 200, height: 132 };
+const DEFAULT_NODE_SIZE = { width: 224, height: 132 };
 const COMPACT_NODE_SIZE = { width: 112, height: 96 };
 const COLUMN_GAP = 120;
 const ROW_GAP = 72;

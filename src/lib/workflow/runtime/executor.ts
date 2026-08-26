@@ -96,8 +96,11 @@ function createTool(
           allowedTools: { readOnly: true },
           requireApproval: "never",
         }),
-        createCalendarEventTool(googleAccessToken),
       ];
+    }
+    case "create_calendar_event": {
+      if (!googleAccessToken) throw new Error("缺少 Google 授权 Token");
+      return [createCalendarEventTool(googleAccessToken)];
     }
   }
 }
@@ -109,7 +112,9 @@ export function createAgentExecutor(
 ) {
   const skillInstructions = loadWorkflowSkills(node.data.skills ?? []);
   const needsGoogle = toolNodes.some(({ data }) =>
-    ["send_email", "google_calendar"].includes(data.registryKey),
+    ["send_email", "google_calendar", "create_calendar_event"].includes(
+      data.registryKey,
+    ),
   );
 
   return async (

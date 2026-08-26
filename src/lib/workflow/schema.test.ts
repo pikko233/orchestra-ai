@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { workflowSpecSchema, type WorkflowSpec } from "./schema";
+import {
+  workflowRequiresWriteConfirmation,
+  workflowSpecSchema,
+  type WorkflowSpec,
+} from "./schema";
 
 const validWorkflow = {
   version: 1,
@@ -95,7 +99,11 @@ test("accepts the dynamic delegation tool", () => {
 });
 
 test("accepts Google Workspace tools", () => {
-  for (const registryKey of ["send_email", "google_calendar"]) {
+  for (const registryKey of [
+    "send_email",
+    "google_calendar",
+    "create_calendar_event",
+  ]) {
     const result = workflowSpecSchema.safeParse({
       ...validWorkflow,
       nodes: validWorkflow.nodes.map((node) =>
@@ -107,6 +115,25 @@ test("accepts Google Workspace tools", () => {
 
     assert.equal(result.success, true);
   }
+});
+
+test("requires confirmation only for external write tools", () => {
+  const withTool = (registryKey: "send_email" | "google_calendar" | "create_calendar_event") =>
+    workflowSpecSchema.parse({
+      ...validWorkflow,
+      nodes: validWorkflow.nodes.map((node) =>
+        node.type === "tool"
+          ? { ...node, data: { ...node.data, registryKey } }
+          : node,
+      ),
+    });
+
+  assert.equal(workflowRequiresWriteConfirmation(withTool("google_calendar")), false);
+  assert.equal(workflowRequiresWriteConfirmation(withTool("send_email")), true);
+  assert.equal(
+    workflowRequiresWriteConfirmation(withTool("create_calendar_event")),
+    true,
+  );
 });
 
 test("accepts registered agent skills", () => {

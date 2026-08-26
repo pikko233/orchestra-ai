@@ -6,12 +6,14 @@ import {
   WorkflowNotFoundError,
 } from "@/lib/workflow/persistence";
 import { runWorkflow } from "@/lib/workflow/runtime/runner";
+import { workflowRequiresWriteConfirmation } from "@/lib/workflow/schema";
 
 export const maxDuration = 180;
 
 const requestSchema = z.object({
   projectId: z.string().trim().min(1),
   message: z.string().trim().min(1).max(20_000),
+  writeConfirmed: z.boolean().optional().default(false),
 });
 
 const encoder = new TextEncoder();
@@ -33,13 +35,19 @@ export async function POST(request: Request) {
   }
 
   try {
-    const { projectId, message } = body.data;
+    const { projectId, message, writeConfirmed } = body.data;
     const { workflow, revision } = await getProjectWorkflow(
       projectId,
       session.user.id,
     );
     if (!workflow) {
       return Response.json({ error: "项目尚未创建工作流" }, { status: 409 });
+    }
+    if (workflowRequiresWriteConfirmation(workflow) && !writeConfirmed) {
+      return Response.json(
+        { error: "发送邮件或创建日历事件前需要用户确认" },
+        { status: 403 },
+      );
     }
 
     const stream = new ReadableStream<Uint8Array>({

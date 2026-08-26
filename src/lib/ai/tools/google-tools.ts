@@ -24,6 +24,20 @@ async function googleRequest(
   return result;
 }
 
+const calendarEventSchema = z
+  .object({
+    title: z.string().trim().min(1).max(300),
+    description: z.string().trim().max(5_000).optional(),
+    startTime: z.iso.datetime({ offset: true }),
+    endTime: z.iso.datetime({ offset: true }),
+    timeZone: z.string().trim().min(1).describe("IANA 时区名称"),
+    attendees: z.array(z.email()).max(20).optional(),
+  })
+  .refine(({ startTime, endTime }) => Date.parse(endTime) > Date.parse(startTime), {
+    message: "结束时间必须晚于开始时间",
+    path: ["endTime"],
+  });
+
 export function createCalendarEventTool(accessToken: string) {
   return tool(
     async ({ title, description, startTime, endTime, timeZone, attendees }) => {
@@ -49,14 +63,7 @@ export function createCalendarEventTool(accessToken: string) {
       name: "create_calendar_event",
       description:
         "在用户明确要求后，在其 Google 主日历中创建事件。时间必须包含 RFC3339 时区偏移。",
-      schema: z.object({
-        title: z.string().trim().min(1).max(300),
-        description: z.string().trim().max(5_000).optional(),
-        startTime: z.string().trim().min(1).describe("RFC3339 开始时间"),
-        endTime: z.string().trim().min(1).describe("RFC3339 结束时间"),
-        timeZone: z.string().trim().min(1).describe("IANA 时区名称"),
-        attendees: z.array(z.email()).max(20).optional(),
-      }),
+      schema: calendarEventSchema,
     },
   );
 }

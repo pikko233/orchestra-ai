@@ -21,6 +21,23 @@ test("creates calendar events and sends email through Google APIs", async () => 
   };
 
   try {
+    await assert.rejects(
+      createCalendarEventTool("token").invoke({
+        title: "无时区事件",
+        startTime: "2026-08-27T10:00:00",
+        endTime: "2026-08-27T10:30:00",
+        timeZone: "Asia/Shanghai",
+      }),
+    );
+    await assert.rejects(
+      createCalendarEventTool("token").invoke({
+        title: "时间倒置事件",
+        startTime: "2026-08-27T10:30:00+08:00",
+        endTime: "2026-08-27T10:00:00+08:00",
+        timeZone: "Asia/Shanghai",
+      }),
+      /结束时间必须晚于开始时间/,
+    );
     await createCalendarEventTool("token").invoke({
       title: "测试事件",
       startTime: "2026-08-27T10:00:00+08:00",

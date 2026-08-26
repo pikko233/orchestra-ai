@@ -28,7 +28,7 @@ export function useWorkflowRunner(projectId: string) {
   useEffect(() => () => abortRef.current?.abort(), []);
 
   const run = useCallback(
-    async (input: string) => {
+    async (input: string, writeConfirmed = false) => {
       const message = input.trim();
       if (!message || running) return;
 
@@ -44,7 +44,7 @@ export function useWorkflowRunner(projectId: string) {
         const response = await fetch("/api/workflow/run", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ projectId, message }),
+          body: JSON.stringify({ projectId, message, writeConfirmed }),
           signal: abortController.signal,
         });
 

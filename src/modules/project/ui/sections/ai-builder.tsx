@@ -7,7 +7,10 @@ import { ProjectNameInput } from "../components/project-name-input";
 import { ChatPanel } from "../components/chat-panel";
 import { authClient } from "@/lib/auth-client";
 import { useRouter } from "next/navigation";
-import type { WorkflowSpec } from "@/lib/workflow/schema";
+import {
+  type WorkflowSpec,
+  workflowRequiresWriteConfirmation,
+} from "@/lib/workflow/schema";
 import { WorkflowCanvas } from "../components/workflow-canvas";
 import { useWorkflowRunner } from "../../hooks/use-workflow-runner";
 import { MarkdownContent } from "../components/markdown-content";
@@ -32,6 +35,18 @@ export const AIBuilder = ({ project }: Props) => {
 
   const router = useRouter();
   const session = authClient.useSession();
+
+  const handleRun = () => {
+    if (!workflow || running || !workflowInput.trim()) return;
+    const requiresConfirmation = workflowRequiresWriteConfirmation(workflow);
+    if (
+      requiresConfirmation &&
+      !window.confirm("该工作流可能发送邮件或创建日历事件，是否继续？")
+    ) {
+      return;
+    }
+    void run(workflowInput, requiresConfirmation);
+  };
 
   useEffect(() => {
     if (!session.isPending && !session.data?.user.id) {
@@ -131,8 +146,7 @@ export const AIBuilder = ({ project }: Props) => {
               onChange={(event) => setWorkflowInput(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key !== "Enter") return;
-                if (!workflow || running) return;
-                void run(workflowInput);
+                handleRun();
               }}
               aria-label="工作流输入"
               placeholder="输入要交给工作流处理的内容"
@@ -140,7 +154,7 @@ export const AIBuilder = ({ project }: Props) => {
             />
             <button
               type="button"
-              onClick={() => void run(workflowInput)}
+              onClick={handleRun}
               disabled={!workflow || !workflowInput.trim() || running}
               aria-label={running ? "工作流运行中" : "运行工作流"}
               title={workflow ? "运行工作流" : "请先创建工作流"}
