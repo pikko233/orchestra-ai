@@ -10,8 +10,21 @@ const identifierSchema = z
 
 const optionalTextSchema = z.string().trim().min(1).max(2_000).optional();
 
-export const workflowToolRegistry = ["search", "save_memory"] as const;
-export const workflowChatModelRegistry = ["gpt-5.6-luna"] as const;
+export const workflowToolRegistry = [
+  "search",
+  "save_memory",
+  "delegate_tasks",
+  "send_email",
+  "google_calendar",
+  "create_calendar_event",
+] as const;
+export const workflowChatModelRegistry = [
+  "gpt-5.6-luna",
+  "gpt-4o",
+  "gpt-4o-mini",
+] as const;
+export type WorkflowChatModelName =
+  (typeof workflowChatModelRegistry)[number];
 
 export const workflowNodeTypeSchema = z.enum([
   "input",
@@ -272,5 +285,13 @@ export type WorkflowConnectionKind = z.infer<
 export type WorkflowSpec = z.infer<typeof workflowSpecSchema>;
 export type WorkflowNode = WorkflowSpec["nodes"][number];
 export type WorkflowConnection = WorkflowSpec["connections"][number];
+export function workflowRequiresWriteConfirmation(workflow: WorkflowSpec) {
+  return workflow.nodes.some(
+    (node) =>
+      node.type === "tool" &&
+      (node.data.registryKey === "send_email" ||
+        node.data.registryKey === "create_calendar_event"),
+  );
+}
 export type OrchestraNodeData = z.infer<typeof orchestraNodeDataSchema> &
   Record<string, unknown>;

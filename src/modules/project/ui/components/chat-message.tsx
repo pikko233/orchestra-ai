@@ -32,7 +32,7 @@ export const ChatMessage = memo(function Message({ message, loading }: Props) {
   return (
     <div
       className={cn(
-        "relative rounded-2xl px-4 py-3 text-sm",
+        "relative min-w-0 rounded-2xl px-4 py-3 text-sm",
         isUser
           ? "max-w-[80%] rounded-br-sm bg-slate-200 text-gray-900 dark:bg-slate-800 dark:text-slate-100"
           : "max-w-full rounded-bl-sm text-slate-800 dark:text-slate-200",
@@ -73,9 +73,11 @@ export const ChatMessage = memo(function Message({ message, loading }: Props) {
       )}
       {/* 消息正文 - AI/用户 */}
       {isUser ? (
-        <p className="whitespace-pre-line leading-relaxed">{message.content}</p>
+        <p className="break-words whitespace-pre-line leading-relaxed [overflow-wrap:anywhere]">
+          {message.content}
+        </p>
       ) : (
-        <div className="prose prose-sm max-w-none text-sm leading-relaxed dark:prose-invert">
+        <div className="prose prose-sm min-w-0 max-w-full overflow-hidden text-sm leading-relaxed dark:prose-invert">
           <MarkdownContent text={message.content} />
         </div>
       )}

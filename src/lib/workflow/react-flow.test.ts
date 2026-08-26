@@ -24,6 +24,7 @@ test("lays dependencies rightward and tools below their agent", () => {
   const positions = layoutWorkflow(workflow);
 
   assert.ok(positions.input.x < positions.agent.x);
+  assert.equal(positions.agent.x - positions.input.x, 232);
   assert.equal(positions.agent.x, positions.tool.x);
   assert.ok(positions.agent.y < positions.tool.y);
 });
@@ -32,6 +33,7 @@ test("maps node types and semantic handles", () => {
   const result = toReactFlow(workflow);
 
   assert.equal(result.nodes[0].type, "inputNode");
+  assert.equal(result.edges[0].type, "bezier");
   assert.deepEqual(
     {
       sourceHandle: result.edges[1].sourceHandle,
@@ -39,4 +41,20 @@ test("maps node types and semantic handles", () => {
     },
     { sourceHandle: "tools", targetHandle: "in" },
   );
+});
+
+test("uses the rendered width when spacing regular nodes", () => {
+  const regularWorkflow = {
+    version: 1,
+    nodes: [
+      { id: "first", type: "agent", data: { label: "First" } },
+      { id: "second", type: "agent", data: { label: "Second" } },
+    ],
+    connections: [
+      { id: "first-second", from: "first", to: "second", kind: "flow" },
+    ],
+  } satisfies WorkflowSpec;
+  const positions = layoutWorkflow(regularWorkflow);
+
+  assert.equal(positions.second.x - positions.first.x, 344);
 });

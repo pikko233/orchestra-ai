@@ -17,10 +17,16 @@ export type WorkflowFlowNode = Node<
   | "vectorDB"
 >;
 
-const NODE_WIDTH = 240;
-const NODE_HEIGHT = 132;
-const COLUMN_GAP = 160;
+const DEFAULT_NODE_SIZE = { width: 224, height: 132 };
+const COMPACT_NODE_SIZE = { width: 112, height: 96 };
+const COLUMN_GAP = 120;
 const ROW_GAP = 72;
+
+function getNodeSize(type: WorkflowSpec["nodes"][number]["type"]) {
+  return type === "input" || type === "model"
+    ? COMPACT_NODE_SIZE
+    : DEFAULT_NODE_SIZE;
+}
 
 const reactFlowType = {
   input: "inputNode",
@@ -91,20 +97,32 @@ export function layoutWorkflow(workflow: WorkflowSpec) {
   }
 
   const columns = new Map<number, string[]>();
+  const nodes = new Map(workflow.nodes.map((node) => [node.id, node]));
   for (const node of workflow.nodes) {
     const layer = layers.get(node.id) ?? 0;
     columns.set(layer, [...(columns.get(layer) ?? []), node.id]);
   }
 
   const positions: Record<string, XYPosition> = {};
-  for (const [layer, ids] of columns) {
-    const columnHeight = ids.length * NODE_HEIGHT + (ids.length - 1) * ROW_GAP;
+  let columnX = 0;
+  for (const layer of [...columns.keys()].sort((left, right) => left - right)) {
+    const ids = columns.get(layer) ?? [];
+    const sizes = ids.map((id) => getNodeSize(nodes.get(id)!.type));
+    const columnHeight =
+      sizes.reduce((total, size) => total + size.height, 0) +
+      Math.max(0, sizes.length - 1) * ROW_GAP;
+    let nodeY = -columnHeight / 2;
+
     ids.forEach((id, row) => {
       positions[id] = {
-        x: layer * (NODE_WIDTH + COLUMN_GAP),
-        y: row * (NODE_HEIGHT + ROW_GAP) - columnHeight / 2,
+        x: columnX,
+        y: nodeY,
       };
+      nodeY += sizes[row].height + ROW_GAP;
     });
+
+    const columnWidth = Math.max(...sizes.map(({ width }) => width));
+    columnX += columnWidth + COLUMN_GAP;
   }
 
   return positions;
@@ -129,7 +147,7 @@ export function toReactFlow(workflow: WorkflowSpec): {
       target: connection.to,
       ...edgeHandles[connection.kind],
       label: edgeLabels[connection.kind],
-      type: "smoothstep",
+      type: "bezier",
       markerEnd: { type: MarkerType.ArrowClosed },
     })),
   };

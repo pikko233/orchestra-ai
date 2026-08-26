@@ -10,6 +10,7 @@ import { replaceWorkflowTool } from "../tools/replace-workflow-tool";
 import {
   globTool,
   grepTool,
+  lsTool,
   readFileTool,
   removeFileTool,
   writeFileTool,
@@ -38,6 +39,7 @@ export const streamAgent = createAgent({
     readFileTool,
     writeFileTool,
     removeFileTool,
+    lsTool,
     globTool,
     grepTool,
   ],

@@ -7,7 +7,10 @@ import { ProjectNameInput } from "../components/project-name-input";
 import { ChatPanel } from "../components/chat-panel";
 import { authClient } from "@/lib/auth-client";
 import { useRouter } from "next/navigation";
-import type { WorkflowSpec } from "@/lib/workflow/schema";
+import {
+  type WorkflowSpec,
+  workflowRequiresWriteConfirmation,
+} from "@/lib/workflow/schema";
 import { WorkflowCanvas } from "../components/workflow-canvas";
 import { useWorkflowRunner } from "../../hooks/use-workflow-runner";
 import { MarkdownContent } from "../components/markdown-content";
@@ -27,12 +30,23 @@ export const AIBuilder = ({ project }: Props) => {
   const [workflowInput, setWorkflowInput] = useState("");
   const [isOutputExpanded, setIsOutputExpanded] = useState(false);
   const outputRef = useRef<HTMLDivElement>(null);
-  const { run, running, output, error, nodeStatuses } = useWorkflowRunner(
-    project.id,
-  );
+  const { run, running, output, error, nodeStatuses, subAgents } =
+    useWorkflowRunner(project.id);
 
   const router = useRouter();
   const session = authClient.useSession();
+
+  const handleRun = () => {
+    if (!workflow || running || !workflowInput.trim()) return;
+    const requiresConfirmation = workflowRequiresWriteConfirmation(workflow);
+    if (
+      requiresConfirmation &&
+      !window.confirm("该工作流可能发送邮件或创建日历事件，是否继续？")
+    ) {
+      return;
+    }
+    void run(workflowInput, requiresConfirmation);
+  };
 
   useEffect(() => {
     if (!session.isPending && !session.data?.user.id) {
@@ -132,16 +146,15 @@ export const AIBuilder = ({ project }: Props) => {
               onChange={(event) => setWorkflowInput(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key !== "Enter") return;
-                if (!workflow || running) return;
-                void run(workflowInput);
+                handleRun();
               }}
               aria-label="工作流输入"
               placeholder="输入要交给工作流处理的内容"
-              className="h-8 w-72 rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-900"
+              className="h-8 w-72 rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none placeholder:text-slate-500 focus:border-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-400"
             />
             <button
               type="button"
-              onClick={() => void run(workflowInput)}
+              onClick={handleRun}
               disabled={!workflow || !workflowInput.trim() || running}
               aria-label={running ? "工作流运行中" : "运行工作流"}
               title={workflow ? "运行工作流" : "请先创建工作流"}
@@ -157,7 +170,7 @@ export const AIBuilder = ({ project }: Props) => {
         </header>
         <div className="relative min-h-0 flex-1">
           <WorkflowCanvas workflow={workflow} nodeStatuses={nodeStatuses} />
-          {(output || error) && (
+          {(output || error || subAgents.length > 0) && (
             <div
               className={`absolute z-10 flex flex-col overflow-hidden rounded-lg border border-slate-200 bg-white/95 text-sm shadow-xl dark:border-slate-700 dark:bg-slate-900/95 ${
                 isOutputExpanded
@@ -190,6 +203,39 @@ export const AIBuilder = ({ project }: Props) => {
                 ref={outputRef}
                 className="min-h-0 flex-1 overflow-y-auto p-3 [scrollbar-color:#94a3b8_transparent] scrollbar-thin dark:[scrollbar-color:#475569_transparent]"
               >
+                {subAgents.length > 0 && (
+                  <div className="mb-3 space-y-1.5 border-b border-slate-200 pb-3 dark:border-slate-700">
+                    <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                      临时 Sub Agents
+                    </p>
+                    {subAgents.map((subAgent) => (
+                      <div
+                        key={`${subAgent.runId}:${subAgent.subAgentId}`}
+                        title={subAgent.error}
+                        className="flex items-center justify-between gap-3 text-xs"
+                      >
+                        <span className="truncate text-slate-700 dark:text-slate-200">
+                          {subAgent.role} · {subAgent.modelName}
+                        </span>
+                        <span
+                          className={
+                            subAgent.status === "success"
+                              ? "text-emerald-600 dark:text-emerald-400"
+                              : subAgent.status === "error"
+                                ? "text-red-600 dark:text-red-400"
+                                : "text-blue-600 dark:text-blue-400"
+                          }
+                        >
+                          {subAgent.status === "success"
+                            ? "已完成"
+                            : subAgent.status === "error"
+                              ? "失败"
+                              : "运行中"}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 {error ? (
                   <p role="alert" className="text-red-600 dark:text-red-400">
                     {error}

@@ -1,7 +1,6 @@
 import { constants } from "node:fs";
 import {
   lstat,
-  mkdir,
   open,
   readFile,
   readdir,
@@ -20,102 +19,187 @@ import {
   sep,
   win32,
 } from "node:path";
-import { tool, type ToolRuntime } from "langchain";
+import { tool } from "langchain";
 import z from "zod";
-import type { AgentContextType } from "../memory/schema";
 
 const IGNORED_DIRECTORIES = new Set([".git", ".next", "node_modules"]);
+const MAX_LS_RESULTS = 200;
 const MAX_GLOB_RESULTS = 200;
 const MAX_GREP_RESULTS = 50;
 const MAX_FILE_BYTES = 512_000;
 const MAX_READ_CHARACTERS = 100_000;
 const READ_TRUNCATION_NOTICE = "\n...文件内容已截断";
-const WORKSPACE_ID_PATTERN = /^[A-Za-z0-9_-]+$/;
-
-type FileToolRuntime = ToolRuntime<unknown, AgentContextType>;
+const SENSITIVE_DIRECTORIES = new Set([".git", ".ssh", ".aws"]);
+const SENSITIVE_FILES = new Set([".npmrc", ".pypirc", ".netrc"]);
 
 const pathSchema = z
   .string()
   .trim()
   .min(1)
-  .describe("相对于当前项目工作区的文件路径");
+  .describe("相对于当前工作目录的文件路径");
 
 function isInside(root: string, target: string) {
   const path = relative(root, target);
   return path === "" || (!path.startsWith(`..${sep}`) && path !== "..");
 }
 
-async function resolveWorkspaceRoot(runtime: FileToolRuntime) {
-  const { projectId, userId } = runtime.context ?? {};
-  if (
-    typeof userId !== "string" ||
-    typeof projectId !== "string" ||
-    !WORKSPACE_ID_PATTERN.test(userId) ||
-    !WORKSPACE_ID_PATTERN.test(projectId)
-  ) {
-    throw new Error("无效的用户或项目工作区标识");
-  }
-
-  const configuredRoot = resolve(
-    process.env.AGENT_WORKSPACE_ROOT ?? ".agent-workspaces",
-  );
-  await mkdir(configuredRoot, { recursive: true });
-  const workspacesRoot = await realpath(configuredRoot);
-  const userWorkspace = join(workspacesRoot, userId);
-  await mkdir(userWorkspace, { recursive: true });
-  const userRoot = await realpath(userWorkspace);
-  if (!isInside(workspacesRoot, userRoot)) {
-    throw new Error("无效的用户工作区路径");
-  }
-
-  const workspace = join(userRoot, projectId);
-  await mkdir(workspace, { recursive: true });
-  const root = await realpath(workspace);
-  if (!isInside(userRoot, root)) throw new Error("无效的项目工作区路径");
-  return root;
+function isSensitivePath(filePath: string) {
+  return filePath
+    .replaceAll("\\", "/")
+    .split("/")
+    .filter(Boolean)
+    .some((part) => {
+      const name = part.toLowerCase();
+      return (
+        SENSITIVE_DIRECTORIES.has(name) ||
+        name.startsWith(".env") ||
+        SENSITIVE_FILES.has(name) ||
+        /\.(?:key|pem|p12|pfx)$/.test(name) ||
+        /^id_(?:rsa|dsa|ecdsa|ed25519)(?:\.pub)?$/.test(name) ||
+        (/\.(?:json|ya?ml|toml|ini|conf)$/.test(name) &&
+          /(?:^|[-_.])(?:credentials?|client[-_]?secret|service[-_]?account|application_default_credentials)(?:[-_.]|$)/.test(
+            name,
+          ))
+      );
+    });
 }
 
-function resolveWorkspacePath(root: string, filePath: string) {
-  if (isAbsolute(filePath) || win32.isAbsolute(filePath)) {
-    throw new Error("只能使用项目工作区内的相对路径");
+function assertResolvedPathIsSafe(root: string, target: string) {
+  if (isSensitivePath(relative(root, target))) {
+    throw new Error("禁止访问敏感文件或目录");
   }
+}
+
+async function resolveWorkingDirectory() {
+  return realpath(process.cwd());
+}
+
+function resolveWorkingPath(root: string, filePath: string) {
+  if (isAbsolute(filePath) || win32.isAbsolute(filePath)) {
+    throw new Error("只能使用当前工作目录内的相对路径");
+  }
+  if (isSensitivePath(filePath)) throw new Error("禁止访问敏感文件或目录");
 
   const target = resolve(root, filePath);
   if (!isInside(root, target)) {
-    throw new Error("禁止访问项目工作区之外的文件");
+    throw new Error("禁止访问当前工作目录之外的文件");
   }
 
   return target;
 }
 
 async function resolveReadPath(root: string, filePath: string) {
-  const target = resolveWorkspacePath(root, filePath);
-  const realTarget = await realpath(target);
-  if (!isInside(root, realTarget)) {
-    throw new Error("禁止通过符号链接访问项目工作区之外的文件");
+  const target = resolveWorkingPath(root, filePath);
+  let realTarget: string;
+  try {
+    realTarget = await realpath(target);
+  } catch (error) {
+    if (!isMissingPath(error)) throw error;
+    realTarget = await findUniqueFile(root, filePath);
   }
+  if (!isInside(root, realTarget)) {
+    throw new Error("禁止通过符号链接访问当前工作目录之外的文件");
+  }
+  assertResolvedPathIsSafe(root, realTarget);
 
   const info = await stat(realTarget);
   if (!info.isFile()) throw new Error("指定路径不是文件");
   return realTarget;
 }
 
-async function resolveWritePath(root: string, filePath: string) {
-  const target = resolveWorkspacePath(root, filePath);
-  const realParent = await realpath(dirname(target));
-  if (!isInside(root, realParent)) {
-    throw new Error("禁止通过符号链接修改项目工作区之外的文件");
+async function resolveDirectoryPath(root: string, directoryPath: string) {
+  const target = resolveWorkingPath(root, directoryPath);
+  const realTarget = await realpath(target);
+  if (!isInside(root, realTarget)) {
+    throw new Error("禁止通过符号链接访问当前工作目录之外的目录");
   }
+  assertResolvedPathIsSafe(root, realTarget);
+
+  const info = await stat(realTarget);
+  if (!info.isDirectory()) throw new Error("指定路径不是目录");
+  return realTarget;
+}
+
+function isMissingPath(error: unknown) {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === "ENOENT"
+  );
+}
+
+async function* walkDirectories(
+  root: string,
+  directory: string,
+): AsyncGenerator<string> {
+  const entries = await readdir(directory, { withFileTypes: true });
+  for (const entry of entries) {
+    if (!entry.isDirectory() || IGNORED_DIRECTORIES.has(entry.name)) continue;
+
+    const path = await realpath(join(directory, entry.name));
+    if (!isInside(root, path)) {
+      throw new Error("禁止通过符号链接搜索当前工作目录之外的目录");
+    }
+    yield path;
+    yield* walkDirectories(root, path);
+  }
+}
+
+async function resolveLsDirectoryPath(root: string, directoryPath: string) {
+  try {
+    return await resolveDirectoryPath(root, directoryPath);
+  } catch (error) {
+    if (!isMissingPath(error)) throw error;
+  }
+
+  const suffix = directoryPath.replaceAll("\\", "/").replace(/^\.\//, "");
+  const matches: string[] = [];
+  for await (const directory of walkDirectories(root, root)) {
+    const path = relative(root, directory).split(sep).join("/");
+    if (path === suffix || path.endsWith(`/${suffix}`)) matches.push(directory);
+  }
+
+  if (matches.length === 1) return matches[0];
+  if (matches.length > 1) {
+    throw new Error(
+      `目录路径不明确：${directoryPath}，请使用相对于工作目录的完整路径`,
+    );
+  }
+  throw new Error(`目录不存在：${directoryPath}`);
+}
+
+async function resolveWritePath(root: string, filePath: string) {
+  const target = resolveWorkingPath(root, filePath);
+  let realParent: string;
+  try {
+    realParent = await realpath(dirname(target));
+  } catch (error) {
+    if (!isMissingPath(error)) throw error;
+    realParent = await resolveLsDirectoryPath(root, dirname(filePath));
+  }
+  if (!isInside(root, realParent)) {
+    throw new Error("禁止通过符号链接修改当前工作目录之外的文件");
+  }
+  assertResolvedPathIsSafe(root, realParent);
 
   return join(realParent, basename(target));
 }
 
 async function resolveRemovePath(root: string, filePath: string) {
-  const target = resolveWorkspacePath(root, filePath);
-  const realParent = await realpath(dirname(target));
-  if (!isInside(root, realParent)) {
-    throw new Error("禁止通过符号链接删除项目工作区之外的文件");
+  const target = resolveWorkingPath(root, filePath);
+  let realParent: string;
+  try {
+    realParent = await realpath(dirname(target));
+  } catch (error) {
+    if (!isMissingPath(error)) throw error;
+    const match = await findUniqueFile(root, filePath);
+    realParent = dirname(match);
   }
+  if (!isInside(root, realParent)) {
+    throw new Error("禁止通过符号链接删除当前工作目录之外的文件");
+  }
+  assertResolvedPathIsSafe(root, realParent);
 
   const removeTarget = join(realParent, basename(target));
   const info = await lstat(removeTarget);
@@ -128,9 +212,10 @@ function validateGlobPattern(pattern: string) {
   if (
     isAbsolute(pattern) ||
     win32.isAbsolute(pattern) ||
-    pattern.split(/[\\/]/).includes("..")
+    pattern.split(/[\\/]/).includes("..") ||
+    isSensitivePath(pattern)
   ) {
-    throw new Error("搜索模式只能匹配当前项目工作区内的相对路径");
+    throw new Error("搜索模式只能匹配当前工作目录内的相对路径");
   }
 }
 
@@ -140,7 +225,7 @@ async function* walkFiles(
 ): AsyncGenerator<string> {
   const realDirectory = await realpath(directory);
   if (!isInside(root, realDirectory)) {
-    throw new Error("禁止通过符号链接搜索项目工作区之外的目录");
+    throw new Error("禁止通过符号链接搜索当前工作目录之外的目录");
   }
 
   const entries = (await readdir(realDirectory, { withFileTypes: true })).sort(
@@ -150,9 +235,10 @@ async function* walkFiles(
   for (const entry of entries) {
     const path = join(realDirectory, entry.name);
     if (entry.isFile()) {
+      if (isSensitivePath(relative(root, path))) continue;
       const realFile = await realpath(path);
       if (!isInside(root, realFile)) {
-        throw new Error("禁止通过符号链接搜索项目工作区之外的文件");
+        throw new Error("禁止通过符号链接搜索当前工作目录之外的文件");
       }
       yield realFile;
     }
@@ -174,9 +260,25 @@ async function* findFiles(root: string, pattern: string) {
   }
 }
 
+async function findUniqueFile(root: string, filePath: string) {
+  const matches: string[] = [];
+  for await (const match of findFiles(root, filePath)) {
+    matches.push(match);
+    if (matches.length > 1) break;
+  }
+
+  if (matches.length === 1) return realpath(resolve(root, matches[0]));
+  if (matches.length > 1) {
+    throw new Error(
+      `文件路径不明确：${filePath}，请使用相对于工作目录的完整路径`,
+    );
+  }
+  throw new Error(`文件不存在：${filePath}`);
+}
+
 export const readFileTool = tool(
-  async ({ path }, runtime: FileToolRuntime) => {
-    const root = await resolveWorkspaceRoot(runtime);
+  async ({ path }) => {
+    const root = await resolveWorkingDirectory();
     const target = await resolveReadPath(root, path);
     if ((await stat(target)).size > MAX_FILE_BYTES) {
       throw new Error(`文件大小不能超过 ${MAX_FILE_BYTES} 字节`);
@@ -191,14 +293,14 @@ export const readFileTool = tool(
   },
   {
     name: "read_file",
-    description: "读取当前项目工作区内的 UTF-8 文本文件，禁止访问工作区外的文件",
+    description: "读取当前工作目录内的 UTF-8 文本文件，禁止访问工作目录外的文件",
     schema: z.object({ path: pathSchema }),
   },
 );
 
 export const writeFileTool = tool(
-  async ({ path, content }, runtime: FileToolRuntime) => {
-    const root = await resolveWorkspaceRoot(runtime);
+  async ({ path, content }) => {
+    const root = await resolveWorkingDirectory();
     const target = await resolveWritePath(root, path);
     const handle = await open(
       target,
@@ -220,7 +322,7 @@ export const writeFileTool = tool(
   {
     name: "write_file",
     description:
-      "在当前项目工作区内创建或覆盖 UTF-8 文本文件；父目录必须已存在，禁止修改工作区外的文件",
+      "在当前工作目录内创建或覆盖 UTF-8 文本文件；父目录必须已存在，禁止修改工作目录外的文件",
     schema: z.object({
       path: pathSchema,
       content: z.string().describe("要写入文件的完整内容"),
@@ -229,8 +331,8 @@ export const writeFileTool = tool(
 );
 
 export const removeFileTool = tool(
-  async ({ path }, runtime: FileToolRuntime) => {
-    const root = await resolveWorkspaceRoot(runtime);
+  async ({ path }) => {
+    const root = await resolveWorkingDirectory();
     const target = await resolveRemovePath(root, path);
     await unlink(target);
     return `文件已删除：${relative(root, target)}`;
@@ -238,14 +340,41 @@ export const removeFileTool = tool(
   {
     name: "remove_file",
     description:
-      "删除当前项目工作区内的普通文件；禁止删除目录、符号链接和工作区之外的文件",
+      "删除当前工作目录内的普通文件；禁止删除目录、符号链接和工作目录之外的文件",
     schema: z.object({ path: pathSchema }),
   },
 );
 
+export const lsTool = tool(
+  async ({ path }) => {
+    const root = await resolveWorkingDirectory();
+    const target = await resolveLsDirectoryPath(root, path);
+    const entries = (await readdir(target, { withFileTypes: true }))
+      .filter((entry) => !isSensitivePath(entry.name))
+      .sort((left, right) => left.name.localeCompare(right.name));
+
+    if (entries.length === 0) return "目录为空";
+    const items = entries.slice(0, MAX_LS_RESULTS).map((entry) => {
+      if (entry.isDirectory()) return `${entry.name}/`;
+      if (entry.isSymbolicLink()) return `${entry.name}@`;
+      return entry.name;
+    });
+    if (entries.length > MAX_LS_RESULTS) items.push("...结果已截断");
+    return items.join("\n");
+  },
+  {
+    name: "ls",
+    description:
+      "列出当前工作目录内指定目录的直接子项，不递归；允许使用唯一的目录后缀，目录以 / 结尾，符号链接以 @ 结尾",
+    schema: z.object({
+      path: pathSchema.default(".").describe("要列出的目录，默认为当前工作目录"),
+    }),
+  },
+);
+
 export const globTool = tool(
-  async ({ pattern }, runtime: FileToolRuntime) => {
-    const root = await resolveWorkspaceRoot(runtime);
+  async ({ pattern }) => {
+    const root = await resolveWorkingDirectory();
     const files: string[] = [];
     for await (const file of findFiles(root, pattern)) {
       files.push(file);
@@ -259,7 +388,7 @@ export const globTool = tool(
   {
     name: "glob",
     description:
-      "使用 glob 模式搜索当前项目工作区任意深度的文件；不跟随符号链接，并跳过依赖和构建目录",
+      "使用 glob 模式搜索当前工作目录任意深度的文件；不跟随符号链接，并跳过依赖和构建目录",
     schema: z.object({
       pattern: z.string().trim().min(1).describe("例如 skills/**/* 或 src/**/*.ts"),
     }),
@@ -267,8 +396,8 @@ export const globTool = tool(
 );
 
 export const grepTool = tool(
-  async ({ query, pattern, ignoreCase }, runtime: FileToolRuntime) => {
-    const root = await resolveWorkspaceRoot(runtime);
+  async ({ query, pattern, ignoreCase }) => {
+    const root = await resolveWorkingDirectory();
     const matches: string[] = [];
     const expected = ignoreCase ? query.toLowerCase() : query;
 
@@ -294,7 +423,7 @@ export const grepTool = tool(
   {
     name: "grep",
     description:
-      "在当前项目工作区内的文本文件中查找关键字，返回文件路径、行号和匹配行",
+      "在当前工作目录内的文本文件中查找关键字，返回文件路径、行号和匹配行",
     schema: z.object({
       query: z.string().min(1).max(1_000).describe("要查找的文本关键字"),
       pattern: z

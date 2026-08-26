@@ -10,6 +10,11 @@ import { useAgentChat } from "../../hooks/use-agent-chat";
 import { AgentTodoList } from "./agent-todo-list";
 import { ChatInput } from "./chat-input";
 import { ChatMessage } from "./chat-message";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface Props {
   chatWidth: number;
@@ -45,22 +50,31 @@ export const ChatPanel = ({ chatWidth, projectId, onWorkflow }: Props) => {
       className="flex h-full shrink-0 flex-col"
     >
       <div className="flex h-14 shrink-0 items-center border-b border-slate-200 px-4 dark:border-slate-800">
-        <Image
-          className="cursor-pointer dark:hidden"
-          src="/icons/logo.svg"
-          alt="OrchestraAI"
-          width={120}
-          height={20}
-          onClick={() => router.push("/project")}
-        />
-        <Image
-          className="hidden cursor-pointer dark:block"
-          src="/icons/logo-dark.svg"
-          alt="OrchestraAI"
-          width={120}
-          height={20}
-          onClick={() => router.push("/project")}
-        />
+        <Tooltip>
+          <TooltipTrigger
+            aria-label="返回项目列表"
+            className="cursor-pointer"
+            onClick={() => router.push("/project")}
+          >
+            <Image
+              className="dark:hidden"
+              src="/icons/logo.svg"
+              alt="OrchestraAI"
+              width={120}
+              height={20}
+            />
+            <Image
+              className="hidden dark:block"
+              src="/icons/logo-dark.svg"
+              alt="OrchestraAI"
+              width={120}
+              height={20}
+            />
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>点击返回首页</p>
+          </TooltipContent>
+        </Tooltip>
       </div>
 
       <div className="flex shrink-0 justify-end gap-2 p-3 text-slate-500 dark:text-slate-400">
@@ -75,7 +89,7 @@ export const ChatPanel = ({ chatWidth, projectId, onWorkflow }: Props) => {
         </button>
       </div>
 
-      <div className="flex-1 space-y-4 overflow-y-auto p-4 [scrollbar-color:#94a3b8_#fff] scrollbar-thin dark:[scrollbar-color:#475569_#020617]">
+      <div className="flex-1 space-y-4 overflow-y-auto py-4 [scrollbar-color:#94a3b8_#fff] scrollbar-thin dark:[scrollbar-color:#475569_#020617]">
         {messages.length === 0 && (
           <div className="flex h-full items-center justify-center px-6 text-center text-sm text-slate-400 dark:text-slate-500">
             输入消息，开始创建你的 Agent 工作流。
@@ -87,7 +101,7 @@ export const ChatPanel = ({ chatWidth, projectId, onWorkflow }: Props) => {
             key={message.id}
             className={cn(
               "flex",
-              message.role === "user" ? "justify-end" : "justify-start",
+              message.role === "user" ? "justify-end mr-4" : "justify-start",
             )}
           >
             <ChatMessage

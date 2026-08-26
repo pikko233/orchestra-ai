@@ -2,6 +2,7 @@ import {
   type LangGraphRunnableConfig,
   MessagesAnnotation,
 } from "@langchain/langgraph";
+import type { ClientTool, ServerTool } from "@langchain/core/tools";
 import { ChatOpenAI, tools as openAITools } from "@langchain/openai";
 import { createAgent } from "langchain";
 import {
@@ -9,8 +10,14 @@ import {
   type AgentContextType,
 } from "@/lib/ai/memory/schema";
 import { saveMemoryTool } from "@/lib/ai/tools/save-memory-tool";
+import { createDelegateTasksTool } from "@/lib/ai/tools/delegate-tasks-tool";
+import {
+  createCalendarEventTool,
+  createSendEmailTool,
+} from "@/lib/ai/tools/google-tools";
 import { loadWorkflowSkills } from "@/lib/ai/skills";
-import type { WorkflowNode } from "../schema";
+import { getGoogleAccessToken } from "@/lib/auth";
+import type { WorkflowChatModelName, WorkflowNode } from "../schema";
 
 export type AgentNode =
   | Extract<WorkflowNode, { type: "agent" }>
@@ -25,11 +32,6 @@ export type WorkflowNodeEvent = {
   error?: string;
 };
 
-const tools = {
-  search: openAITools.webSearch(),
-  save_memory: saveMemoryTool,
-};
-
 const MAX_NODE_OUTPUT_TOKENS = 3_000;
 const NODE_OUTPUT_RULES = `
 ## 输出要求
@@ -41,14 +43,17 @@ const NODE_OUTPUT_RULES = `
 - 如果内容较多，主动压缩，确保在完整句子处结束。
 `.trim();
 
-function createModel(node: ModelNode) {
+function createModel(
+  node: ModelNode,
+  modelName: WorkflowChatModelName = node.data.modelName,
+) {
   const provider = (node.data.provider ?? "openai").toLowerCase();
   if (provider !== "openai") {
     throw new Error(`模型 Provider 尚未支持：${provider}`);
   }
 
   return new ChatOpenAI({
-    model: node.data.modelName,
+    model: modelName,
     maxTokens: MAX_NODE_OUTPUT_TOKENS,
     useResponsesApi: true,
     configuration: node.data.endpoint
@@ -57,20 +62,60 @@ function createModel(node: ModelNode) {
   });
 }
 
+function createTool(
+  node: ToolNode,
+  modelNode: ModelNode,
+  parentNodeId: string,
+  googleAccessToken?: string,
+): Array<ClientTool | ServerTool> {
+  switch (node.data.registryKey) {
+    case "search":
+      return [openAITools.webSearch()];
+    case "save_memory":
+      return [saveMemoryTool];
+    case "delegate_tasks":
+      return [
+        createDelegateTasksTool({
+          createModel: (modelName) => createModel(modelNode, modelName),
+          defaultModelName: modelNode.data.modelName,
+          parentNodeId,
+        }),
+      ];
+    case "send_email": {
+      if (!googleAccessToken) throw new Error("缺少 Google 授权 Token");
+      return [createSendEmailTool(googleAccessToken)];
+    }
+    case "google_calendar": {
+      if (!googleAccessToken) throw new Error("缺少 Google 授权 Token");
+      return [
+        openAITools.mcp({
+          serverLabel: "google_calendar",
+          serverDescription: "只读查询 Google 日历和空闲时间。",
+          connectorId: "connector_googlecalendar",
+          authorization: googleAccessToken,
+          allowedTools: { readOnly: true },
+          requireApproval: "never",
+        }),
+      ];
+    }
+    case "create_calendar_event": {
+      if (!googleAccessToken) throw new Error("缺少 Google 授权 Token");
+      return [createCalendarEventTool(googleAccessToken)];
+    }
+  }
+}
+
 export function createAgentExecutor(
   node: AgentNode,
   modelNode: ModelNode,
   toolNodes: ToolNode[],
 ) {
   const skillInstructions = loadWorkflowSkills(node.data.skills ?? []);
-  const agent = createAgent({
-    model: createModel(modelNode),
-    tools: toolNodes.map((node) => tools[node.data.registryKey]),
-    systemPrompt: [node.data.instructions, skillInstructions, NODE_OUTPUT_RULES]
-      .filter(Boolean)
-      .join("\n\n"),
-    contextSchema: agentContextSchema,
-  });
+  const needsGoogle = toolNodes.some(({ data }) =>
+    ["send_email", "google_calendar", "create_calendar_event"].includes(
+      data.registryKey,
+    ),
+  );
 
   return async (
     state: typeof MessagesAnnotation.State,
@@ -81,6 +126,29 @@ export function createAgentExecutor(
 
     try {
       if (!config.context) throw new Error("缺少工作流运行上下文");
+
+      const googleAuth = needsGoogle
+        ? await getGoogleAccessToken(config.context.userId)
+        : undefined;
+      const agent = createAgent({
+        model: createModel(modelNode),
+        tools: toolNodes.flatMap((toolNode) =>
+          createTool(
+            toolNode,
+            modelNode,
+            node.id,
+            googleAuth?.accessToken,
+          ),
+        ),
+        systemPrompt: [
+          node.data.instructions,
+          skillInstructions,
+          NODE_OUTPUT_RULES,
+        ]
+          .filter(Boolean)
+          .join("\n\n"),
+        contextSchema: agentContextSchema,
+      });
 
       const result = await agent.invoke(
         { messages: state.messages },
