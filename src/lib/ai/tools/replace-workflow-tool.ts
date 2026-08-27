@@ -19,7 +19,7 @@ export const replaceWorkflowTool = tool(
       expectedRevision: revision,
     });
 
-    return result.workflow;
+    return result;
   },
   {
     name: "replace_workflow",

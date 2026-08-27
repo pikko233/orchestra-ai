@@ -25,6 +25,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import { nodeTypes } from "@/components/node/types";
 import { NODE_THEMES } from "@/components/node/themes";
+import { toast } from "@/components/ui/toast";
 import { toReactFlow, type WorkflowFlowNode } from "@/lib/workflow/react-flow";
 import type {
   WorkflowConnectionKind,
@@ -211,6 +212,27 @@ export function WorkflowCanvas({
     [onWorkflowChange],
   );
 
+  const onBeforeDelete = useCallback(
+    async ({ nodes: deleted }: { nodes: WorkflowFlowNode[] }) => {
+      const current = workflowRef.current;
+      if (!current || deleted.length === 0) return true;
+      const ids = new Set(deleted.map(({ id }) => id));
+      const remaining = current.nodes.filter(({ id }) => !ids.has(id));
+      const removesLastInput =
+        current.nodes.some(({ type }) => type === "input") &&
+        !remaining.some(({ type }) => type === "input");
+      if (remaining.length > 0 && !removesLastInput) {
+        return true;
+      }
+      toast.add({
+        type: "warning",
+        title: "工作流必须保留至少一个用户输入节点",
+      });
+      return false;
+    },
+    [],
+  );
+
   const onEdgesDelete = useCallback(
     (deleted: Array<{ id: string }>) => {
       const current = workflowRef.current;
@@ -238,6 +260,7 @@ export function WorkflowCanvas({
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
+        onBeforeDelete={onBeforeDelete}
         onNodeDragStop={onNodeDragStop}
         onNodesDelete={onNodesDelete}
         onEdgesDelete={onEdgesDelete}

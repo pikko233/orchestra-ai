@@ -6,7 +6,11 @@ import { useRouter } from "next/navigation";
 import { useMutation } from "@tanstack/react-query";
 import { authClient } from "@/lib/auth-client";
 import { toast } from "@/components/ui/toast";
-import type { WorkflowNode, WorkflowSpec } from "@/lib/workflow/schema";
+import type {
+  WorkflowNode,
+  WorkflowSpec,
+  WorkflowUpdate,
+} from "@/lib/workflow/schema";
 import { useTRPC } from "@/trpc/client";
 import type { ProjectFindOne } from "../../types";
 import { ChatPanel } from "../components/chat-panel";
@@ -69,9 +73,9 @@ export const AIBuilder = ({ project }: Props) => {
     setIsDirty(true);
   }, []);
 
-  const handleChatWorkflow = useCallback((next: WorkflowSpec) => {
-    setWorkflow(next);
-    setRevision((current) => current + 1);
+  const handleChatWorkflow = useCallback((update: WorkflowUpdate) => {
+    setWorkflow(update.workflow);
+    setRevision(update.revision);
     setIsDirty(false);
   }, []);
 

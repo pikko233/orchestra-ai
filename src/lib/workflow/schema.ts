@@ -296,6 +296,13 @@ export type WorkflowConnectionKind = z.infer<
   typeof workflowConnectionKindSchema
 >;
 export type WorkflowSpec = z.infer<typeof workflowSpecSchema>;
+export const workflowUpdateSchema = z
+  .object({
+    workflow: workflowSpecSchema,
+    revision: z.number().int().nonnegative(),
+  })
+  .strict();
+export type WorkflowUpdate = z.infer<typeof workflowUpdateSchema>;
 export type WorkflowNode = WorkflowSpec["nodes"][number];
 export type WorkflowConnection = WorkflowSpec["connections"][number];
 export function workflowRequiresWriteConfirmation(workflow: WorkflowSpec) {

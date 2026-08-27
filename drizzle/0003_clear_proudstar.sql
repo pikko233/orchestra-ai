@@ -1,0 +1,1 @@
+ALTER TABLE "workflow_schedule" ADD COLUMN "locked_until" timestamp with time zone;

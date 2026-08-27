@@ -13,7 +13,7 @@ export const chatImageSchema = z.object({
   filename: z.string().min(1),
   mimeType: z.enum(["image/png", "image/jpeg", "image/webp"]),
   source: z.enum(["upload", "generated"]),
-  url: z.string().min(1),
+  url: z.url({ protocol: /^https?$/ }),
 });
 
 export type ChatImage = z.infer<typeof chatImageSchema>;

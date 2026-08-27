@@ -1,4 +1,4 @@
-import { and, asc, eq, lte } from "drizzle-orm";
+import { and, asc, eq, isNull, lte, or } from "drizzle-orm";
 import { db } from "@/db";
 import { workflowSchedule } from "@/db/schema";
 import { getProjectWorkflow } from "@/lib/workflow/persistence";
@@ -8,20 +8,22 @@ import { getNextRunAt } from "@/lib/workflow/schedules";
 export const maxDuration = 180;
 
 type Schedule = typeof workflowSchedule.$inferSelect;
+const LEASE_DURATION_MS = 4 * 60 * 1000;
 
 async function runSchedule(schedule: Schedule, now: Date) {
+  const lockedUntil = new Date(now.getTime() + LEASE_DURATION_MS);
   const [claimed] = await db
     .update(workflowSchedule)
-    .set({
-      nextRunAt: getNextRunAt(schedule.cron, schedule.timezone, now),
-      lastRunAt: now,
-      lastError: null,
-    })
+    .set({ lockedUntil })
     .where(
       and(
         eq(workflowSchedule.id, schedule.id),
         eq(workflowSchedule.enabled, true),
         eq(workflowSchedule.nextRunAt, schedule.nextRunAt),
+        or(
+          isNull(workflowSchedule.lockedUntil),
+          lte(workflowSchedule.lockedUntil, now),
+        ),
       ),
     )
     .returning({ id: workflowSchedule.id });
@@ -66,14 +68,36 @@ async function runSchedule(schedule: Schedule, now: Date) {
     })) {
       void _event;
     }
-    return true;
+    const finishedAt = new Date();
+    const [completed] = await db
+      .update(workflowSchedule)
+      .set({
+        nextRunAt: getNextRunAt(schedule.cron, schedule.timezone, finishedAt),
+        lockedUntil: null,
+        lastRunAt: finishedAt,
+        lastError: null,
+      })
+      .where(
+        and(
+          eq(workflowSchedule.id, schedule.id),
+          eq(workflowSchedule.lockedUntil, lockedUntil),
+        ),
+      )
+      .returning({ id: workflowSchedule.id });
+    return Boolean(completed);
   } catch (error) {
     await db
       .update(workflowSchedule)
       .set({
+        lockedUntil: null,
         lastError: error instanceof Error ? error.message : "定时任务执行失败",
       })
-      .where(eq(workflowSchedule.id, schedule.id));
+      .where(
+        and(
+          eq(workflowSchedule.id, schedule.id),
+          eq(workflowSchedule.lockedUntil, lockedUntil),
+        ),
+      );
     return false;
   }
 }
@@ -92,6 +116,10 @@ export async function GET(request: Request) {
       and(
         eq(workflowSchedule.enabled, true),
         lte(workflowSchedule.nextRunAt, now),
+        or(
+          isNull(workflowSchedule.lockedUntil),
+          lte(workflowSchedule.lockedUntil, now),
+        ),
       ),
     )
     .orderBy(asc(workflowSchedule.nextRunAt))

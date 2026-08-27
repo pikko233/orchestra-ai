@@ -4,8 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { readSse } from "@/lib/sse";
 import { parseAgentTodos } from "@/lib/ai/todos";
 import {
-  workflowSpecSchema,
-  type WorkflowSpec,
+  workflowUpdateSchema,
+  type WorkflowUpdate,
 } from "@/lib/workflow/schema";
 import type { ChatMessageData } from "../ui/components/chat-message";
 import {
@@ -27,7 +27,7 @@ export function useAgentChat({
   onWorkflow,
 }: {
   projectId: string;
-  onWorkflow: (workflow: WorkflowSpec) => void;
+  onWorkflow: (update: WorkflowUpdate) => void;
 }) {
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<ChatMessageData[]>([]);
@@ -289,8 +289,8 @@ export function useAgentChat({
             break;
           }
           case "workflow": {
-            const workflow = workflowSpecSchema.safeParse(data);
-            if (workflow.success) onWorkflow(workflow.data);
+            const update = workflowUpdateSchema.safeParse(data);
+            if (update.success) onWorkflow(update.data);
             break;
           }
           case "end": {

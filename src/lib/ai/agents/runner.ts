@@ -7,7 +7,7 @@ import {
   message as messageTable,
   project as projectTable,
 } from "@/db/schema";
-import { workflowSpecSchema } from "@/lib/workflow/schema";
+import { workflowUpdateSchema } from "@/lib/workflow/schema";
 import { parseAgentTodos, type AgentTodo } from "@/lib/ai/todos";
 import { chatImageSchema, type ChatImage } from "@/lib/ai/images/types";
 import { llm } from "../models/llm";
@@ -45,13 +45,13 @@ async function consume<T>(
   for await (const value of source) await onValue(value);
 }
 
-function parseWorkflow(output: unknown) {
-  if (typeof output !== "string") return workflowSpecSchema.safeParse(output);
+function parseWorkflowUpdate(output: unknown) {
+  if (typeof output !== "string") return workflowUpdateSchema.safeParse(output);
 
   try {
-    return workflowSpecSchema.safeParse(JSON.parse(output));
+    return workflowUpdateSchema.safeParse(JSON.parse(output));
   } catch {
-    return workflowSpecSchema.safeParse(null);
+    return workflowUpdateSchema.safeParse(null);
   }
 }
 
@@ -344,9 +344,9 @@ export async function runPreparedAgent(
           });
 
           if (call.name === "replace_workflow") {
-            const workflow = parseWorkflow(toolOutput);
-            if (workflow.success) {
-              emit({ type: "workflow", data: workflow.data });
+            const update = parseWorkflowUpdate(toolOutput);
+            if (update.success) {
+              emit({ type: "workflow", data: update.data });
             }
           }
           if (call.name === "generate_image") {

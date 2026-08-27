@@ -131,11 +131,11 @@ export function WorkflowScheduleManager({ projectId }: { projectId: string }) {
                   <dl className="mt-3 space-y-1.5 text-xs text-slate-600 dark:text-slate-300">
                     <ScheduleDetail
                       label="下次执行"
-                      value={formatDate(schedule.nextRunAt)}
+                      value={formatDate(schedule.nextRunAt, schedule.timezone)}
                     />
                     <ScheduleDetail
                       label="最近执行"
-                      value={formatDate(schedule.lastRunAt)}
+                      value={formatDate(schedule.lastRunAt, schedule.timezone)}
                     />
                     <ScheduleDetail label="收件邮箱" value={schedule.recipientEmail} />
                   </dl>
@@ -178,10 +178,11 @@ function ScheduleDetail({ label, value }: { label: string; value: string }) {
   );
 }
 
-function formatDate(value: string | null) {
+function formatDate(value: string | null, timeZone: string) {
   if (!value) return "尚未执行";
   return new Intl.DateTimeFormat("zh-CN", {
     dateStyle: "medium",
     timeStyle: "short",
+    timeZone,
   }).format(new Date(value));
 }

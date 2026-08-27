@@ -173,6 +173,7 @@ export const workflowSchedule = pgTable(
     recipientEmail: text("recipient_email").notNull(),
     enabled: boolean("enabled").default(false).notNull(),
     nextRunAt: timestamp("next_run_at", { withTimezone: true }).notNull(),
+    lockedUntil: timestamp("locked_until", { withTimezone: true }),
     lastRunAt: timestamp("last_run_at", { withTimezone: true }),
     lastError: text("last_error"),
     createdAt: timestamp("created_at").defaultNow().notNull(),

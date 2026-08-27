@@ -22,6 +22,13 @@
       "when": 1787819218568,
       "tag": "0002_sticky_living_lightning",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1787822373273,
+      "tag": "0003_clear_proudstar",
+      "breakpoints": true
     }
   ]
 }
