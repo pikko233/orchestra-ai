@@ -19,13 +19,14 @@ export type WorkflowFlowNode = Node<
 
 const DEFAULT_NODE_SIZE = { width: 224, height: 132 };
 const COMPACT_NODE_SIZE = { width: 112, height: 96 };
+const TOOL_NODE_SIZE = { width: 224, height: 56 };
 const COLUMN_GAP = 120;
 const ROW_GAP = 72;
 
 function getNodeSize(type: WorkflowSpec["nodes"][number]["type"]) {
-  return type === "input" || type === "model"
-    ? COMPACT_NODE_SIZE
-    : DEFAULT_NODE_SIZE;
+  if (type === "input" || type === "model") return COMPACT_NODE_SIZE;
+  if (type === "tool") return TOOL_NODE_SIZE;
+  return DEFAULT_NODE_SIZE;
 }
 
 const reactFlowType = {
@@ -138,7 +139,7 @@ export function toReactFlow(workflow: WorkflowSpec): {
     nodes: workflow.nodes.map((node) => ({
       id: node.id,
       type: reactFlowType[node.type],
-      position: positions[node.id],
+      position: node.position ?? positions[node.id],
       data: node.data,
     })),
     edges: workflow.connections.map((connection) => ({

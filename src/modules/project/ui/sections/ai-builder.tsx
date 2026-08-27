@@ -1,52 +1,47 @@
 "use client";
 
-import { Loader2, Maximize2, Minimize2, Play, Sidebar } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
-import { ProjectFindOne } from "../../types";
-import { ProjectNameInput } from "../components/project-name-input";
-import { ChatPanel } from "../components/chat-panel";
-import { authClient } from "@/lib/auth-client";
+import { Save, Sidebar } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-  type WorkflowSpec,
-  workflowRequiresWriteConfirmation,
+import { useMutation } from "@tanstack/react-query";
+import { authClient } from "@/lib/auth-client";
+import { toast } from "@/components/ui/toast";
+import type {
+  WorkflowNode,
+  WorkflowSpec,
+  WorkflowUpdate,
 } from "@/lib/workflow/schema";
-import { WorkflowCanvas } from "../components/workflow-canvas";
-import { useWorkflowRunner } from "../../hooks/use-workflow-runner";
-import { MarkdownContent } from "../components/markdown-content";
+import { useTRPC } from "@/trpc/client";
+import type { ProjectFindOne } from "../../types";
+import { ChatPanel } from "../components/chat-panel";
+import { ProjectNameInput } from "../components/project-name-input";
+import {
+  WorkflowCanvas,
+  type WorkflowCanvasHandle,
+} from "../components/workflow-canvas";
+import { WorkflowExecutionPanel } from "../components/workflow-execution-panel";
+import { WorkflowNodeLibrary } from "../components/workflow-node-library";
+import { WorkflowScheduleManager } from "../components/workflow-schedule-manager";
 
 interface Props {
   project: ProjectFindOne;
 }
 
 export const AIBuilder = ({ project }: Props) => {
-  // Siderbar State
   const [isChatOpen, setIsChatOpen] = useState(true);
   const [chatWidth, setChatWidth] = useState(320);
   const [isDragging, setIsDragging] = useState(false);
+  const [mode, setMode] = useState<"editor" | "execution">("editor");
   const [workflow, setWorkflow] = useState<WorkflowSpec | null>(
     project.workflow,
   );
-  const [workflowInput, setWorkflowInput] = useState("");
-  const [isOutputExpanded, setIsOutputExpanded] = useState(false);
-  const outputRef = useRef<HTMLDivElement>(null);
-  const { run, running, output, error, nodeStatuses, subAgents } =
-    useWorkflowRunner(project.id);
-
+  const [revision, setRevision] = useState(project.revision);
+  const [isDirty, setIsDirty] = useState(false);
+  const canvasRef = useRef<WorkflowCanvasHandle | null>(null);
   const router = useRouter();
   const session = authClient.useSession();
-
-  const handleRun = () => {
-    if (!workflow || running || !workflowInput.trim()) return;
-    const requiresConfirmation = workflowRequiresWriteConfirmation(workflow);
-    if (
-      requiresConfirmation &&
-      !window.confirm("该工作流可能发送邮件或创建日历事件，是否继续？")
-    ) {
-      return;
-    }
-    void run(workflowInput, requiresConfirmation);
-  };
+  const trpc = useTRPC();
+  const saveWorkflow = useMutation(trpc.workflow.save.mutationOptions());
 
   useEffect(() => {
     if (!session.isPending && !session.data?.user.id) {
@@ -55,35 +50,16 @@ export const AIBuilder = ({ project }: Props) => {
   }, [router, session.data?.user.id, session.isPending]);
 
   useEffect(() => {
-    const frame = requestAnimationFrame(() => {
-      if (outputRef.current) {
-        outputRef.current.scrollTop = outputRef.current.scrollHeight;
-      }
-    });
+    if (!isDragging) return;
 
-    return () => cancelAnimationFrame(frame);
-  }, [isOutputExpanded, output]);
-
-  useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!isDragging) return;
-
-      const newWidth = Math.max(250, Math.min(e.clientX, 600));
-
-      setChatWidth(newWidth);
+    const handleMouseMove = (event: MouseEvent) => {
+      setChatWidth(Math.max(250, Math.min(event.clientX, 600)));
     };
+    const handleMouseUp = () => setIsDragging(false);
 
-    const handleMouseUp = () => {
-      setIsDragging(false);
-    };
-
-    if (isDragging) {
-      document.addEventListener("mousemove", handleMouseMove);
-      document.addEventListener("mouseup", handleMouseUp);
-      document.body.style.userSelect = "none"; // 防止拖拽时误选中文字
-    } else {
-      document.body.style.userSelect = "auto";
-    }
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+    document.body.style.userSelect = "none";
 
     return () => {
       document.removeEventListener("mousemove", handleMouseMove);
@@ -92,164 +68,184 @@ export const AIBuilder = ({ project }: Props) => {
     };
   }, [isDragging]);
 
+  const handleWorkflowChange = useCallback((next: WorkflowSpec) => {
+    setWorkflow(next);
+    setIsDirty(true);
+  }, []);
+
+  const handleChatWorkflow = useCallback((update: WorkflowUpdate) => {
+    setWorkflow(update.workflow);
+    setRevision(update.revision);
+    setIsDirty(false);
+  }, []);
+
+  const handleAddNode = useCallback((node: WorkflowNode) => {
+    setMode("editor");
+    requestAnimationFrame(() => {
+      const positions = canvasRef.current?.getNodePositions() ?? {};
+      const position = canvasRef.current?.getRandomCenterPosition() ?? {
+        x: 0,
+        y: 0,
+      };
+      setWorkflow((current) => {
+        const base = current ?? { version: 1, nodes: [], connections: [] };
+        return {
+          ...base,
+          nodes: [
+            ...base.nodes.map((item) =>
+              positions[item.id]
+                ? { ...item, position: positions[item.id] }
+                : item,
+            ),
+            { ...node, position },
+          ],
+        };
+      });
+      setIsDirty(true);
+    });
+  }, []);
+
+  const handleSave = () => {
+    if (!workflow) return;
+
+    const request = saveWorkflow
+      .mutateAsync({
+        projectId: project.id,
+        workflow,
+        expectedRevision: revision,
+      })
+      .then((result) => {
+        setWorkflow(result.workflow);
+        setRevision(result.revision);
+        setIsDirty(false);
+        return result;
+      });
+
+    toast.promise(request, {
+      loading: "正在保存工作流…",
+      success: "工作流已保存",
+      error: "工作流保存失败",
+    });
+  };
+
   return (
-    <div className="flex h-screen w-full overflow-y-auto bg-white font-sans text-slate-900 dark:bg-slate-950 dark:text-slate-100">
-      {/* 左侧边栏 - chat聊天界面 */}
+    <div className="flex h-screen w-full overflow-hidden bg-white font-sans text-slate-900 dark:bg-slate-950 dark:text-slate-100">
       <aside
-        style={{ width: isChatOpen ? `${chatWidth}px` : "0px" }}
-        className={`relative flex h-full shrink-0 flex-col overflow-hidden border-slate-200 dark:border-slate-800 ${isChatOpen ? "border" : "border-0"} ${isDragging ? "transition-[width] duration-300 ease-in-out" : ""}`}
+        style={{ width: isChatOpen ? chatWidth : 0 }}
+        className={`relative flex h-full shrink-0 flex-col overflow-hidden border-slate-200 transition-[width] dark:border-slate-800 ${isChatOpen ? "border-r" : "border-0"}`}
       >
         <ChatPanel
           key={project.id}
           chatWidth={chatWidth}
           projectId={project.id}
-          onWorkflow={setWorkflow}
+          onWorkflow={handleChatWorkflow}
         />
-        {/* 点击拖拽调整左右两侧宽度 */}
         {isChatOpen && (
           <div
-            onMouseDown={(e) => {
-              e.preventDefault();
+            onMouseDown={(event) => {
+              event.preventDefault();
               setIsDragging(true);
             }}
-            className="absolute top-0 right-0 bottom-0 w-1.5 cursor-col-resize hover:bg-slate-200 dark:hover:bg-slate-700"
+            className="absolute inset-y-0 right-0 z-10 w-1.5 cursor-col-resize hover:bg-slate-200 dark:hover:bg-slate-700"
           />
         )}
       </aside>
-      {/* ================= main区域 - 画布 ================= */}
-      <main className={`flex-1 flex flex-col min-w-0 h-full`}>
-        {/* Top Header */}
-        <header className="flex h-14 items-center justify-between border-b border-slate-200 px-4 dark:border-slate-800">
-          <div className="flex items-center gap-4">
-            {/* 控制侧边栏展开/隐藏的按钮 */}
-            <button
-              onClick={() => setIsChatOpen(!isChatOpen)}
-              className={`p-1.5 rounded-md transition-colors cursor-pointer ${
-                isChatOpen
-                  ? "text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
-                  : "bg-blue-50 text-blue-600 dark:bg-blue-950/60 dark:text-blue-400"
-              }`}
-              title={isChatOpen ? "关闭侧边栏" : "打开侧边栏"}
-            >
-              <Sidebar size={18} />
-            </button>
-            {/* 项目名称 - 点击修改 */}
-            <ProjectNameInput
-              projectId={project.id}
-              projectName={project.name}
-            />
-          </div>
 
-          <div className="flex items-center gap-2 text-slate-600">
-            <input
-              value={workflowInput}
-              onChange={(event) => setWorkflowInput(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key !== "Enter") return;
-                handleRun();
-              }}
-              aria-label="工作流输入"
-              placeholder="输入要交给工作流处理的内容"
-              className="h-8 w-72 rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none placeholder:text-slate-500 focus:border-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-400"
-            />
-            <button
-              type="button"
-              onClick={handleRun}
-              disabled={!workflow || !workflowInput.trim() || running}
-              aria-label={running ? "工作流运行中" : "运行工作流"}
-              title={workflow ? "运行工作流" : "请先创建工作流"}
-              className="rounded-md bg-red-500 p-1.5 text-white hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {running ? (
-                <Loader2 size={18} className="animate-spin" />
-              ) : (
-                <Play size={18} className="fill-current" />
-              )}
-            </button>
-          </div>
+      <main className="flex min-w-0 flex-1 flex-col">
+        <header className="flex h-14 shrink-0 items-center border-b border-slate-200 px-4 dark:border-slate-800">
+          <button
+            type="button"
+            onClick={() => setIsChatOpen((open) => !open)}
+            aria-label={isChatOpen ? "关闭 AI Chat" : "打开 AI Chat"}
+            title={isChatOpen ? "关闭 AI Chat" : "打开 AI Chat"}
+            className={`mr-4 rounded-md p-1.5 transition-colors ${
+              isChatOpen
+                ? "text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
+                : "bg-blue-50 text-blue-600 dark:bg-blue-950/60 dark:text-blue-400"
+            }`}
+          >
+            <Sidebar size={18} />
+          </button>
+          <ProjectNameInput projectId={project.id} projectName={project.name} />
         </header>
-        <div className="relative min-h-0 flex-1">
-          <WorkflowCanvas workflow={workflow} nodeStatuses={nodeStatuses} />
-          {(output || error || subAgents.length > 0) && (
-            <div
-              className={`absolute z-10 flex flex-col overflow-hidden rounded-lg border border-slate-200 bg-white/95 text-sm shadow-xl dark:border-slate-700 dark:bg-slate-900/95 ${
-                isOutputExpanded
-                  ? "inset-4"
-                  : "right-4 bottom-4 h-36 w-[min(24rem,calc(100%-2rem))]"
-              }`}
+
+        <div className="flex min-h-0 flex-1">
+          <section className="flex min-w-0 flex-1 flex-col">
+            <nav
+              aria-label="工作区模式"
+              className="flex h-12 shrink-0 items-end gap-6 border-b border-slate-200 px-5 dark:border-slate-800"
             >
-              <div className="flex h-10 shrink-0 items-center justify-between border-b border-slate-200 px-3 dark:border-slate-700">
-                <span className="font-medium text-slate-700 dark:text-slate-200">
-                  工作流输出
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setIsOutputExpanded((current) => !current)}
-                  aria-expanded={isOutputExpanded}
-                  aria-label={
-                    isOutputExpanded ? "收缩工作流输出" : "展开工作流输出"
-                  }
-                  title={isOutputExpanded ? "收缩" : "展开"}
-                  className="rounded-md p-1 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
-                >
-                  {isOutputExpanded ? (
-                    <Minimize2 size={16} />
-                  ) : (
-                    <Maximize2 size={16} />
-                  )}
-                </button>
-              </div>
-              <div
-                ref={outputRef}
-                className="min-h-0 flex-1 overflow-y-auto p-3 [scrollbar-color:#94a3b8_transparent] scrollbar-thin dark:[scrollbar-color:#475569_transparent]"
+              <ModeTab
+                active={mode === "editor"}
+                onClick={() => setMode("editor")}
               >
-                {subAgents.length > 0 && (
-                  <div className="mb-3 space-y-1.5 border-b border-slate-200 pb-3 dark:border-slate-700">
-                    <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                      临时 Sub Agents
-                    </p>
-                    {subAgents.map((subAgent) => (
-                      <div
-                        key={`${subAgent.runId}:${subAgent.subAgentId}`}
-                        title={subAgent.error}
-                        className="flex items-center justify-between gap-3 text-xs"
-                      >
-                        <span className="truncate text-slate-700 dark:text-slate-200">
-                          {subAgent.role} · {subAgent.modelName}
-                        </span>
-                        <span
-                          className={
-                            subAgent.status === "success"
-                              ? "text-emerald-600 dark:text-emerald-400"
-                              : subAgent.status === "error"
-                                ? "text-red-600 dark:text-red-400"
-                                : "text-blue-600 dark:text-blue-400"
-                          }
-                        >
-                          {subAgent.status === "success"
-                            ? "已完成"
-                            : subAgent.status === "error"
-                              ? "失败"
-                              : "运行中"}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {error ? (
-                  <p role="alert" className="text-red-600 dark:text-red-400">
-                    {error}
-                  </p>
-                ) : (
-                  <div className="text-slate-700 dark:text-slate-200">
-                    <MarkdownContent text={output} />
-                  </div>
-                )}
+                虚拟画布
+              </ModeTab>
+              <ModeTab
+                active={mode === "execution"}
+                onClick={() => setMode("execution")}
+              >
+                执行工作流
+              </ModeTab>
+              <div className="ml-auto" />
+              <WorkflowScheduleManager projectId={project.id} />
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={!workflow || !isDirty || saveWorkflow.isPending}
+                className="mb-2 flex h-8 items-center gap-1.5 rounded-md bg-blue-600 px-3 text-sm text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Save size={15} />
+                {saveWorkflow.isPending ? "保存中" : "保存"}
+              </button>
+            </nav>
+
+            <div className="min-h-0 flex-1">
+              <div className={mode === "editor" ? "h-full" : "hidden"}>
+                <WorkflowCanvas
+                  canvasRef={canvasRef}
+                  workflow={workflow}
+                  nodeStatuses={{}}
+                  onWorkflowChange={handleWorkflowChange}
+                />
+              </div>
+              <div className={mode === "execution" ? "h-full" : "hidden"}>
+                <WorkflowExecutionPanel
+                  projectId={project.id}
+                  workflow={workflow}
+                />
               </div>
             </div>
-          )}
+          </section>
+
+          <WorkflowNodeLibrary onAddNode={handleAddNode} />
         </div>
       </main>
     </div>
   );
 };
+
+function ModeTab({
+  active,
+  children,
+  onClick,
+}: {
+  active: boolean;
+  children: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-current={active ? "page" : undefined}
+      className={`h-full border-b-2 px-1 text-sm transition-colors ${
+        active
+          ? "border-blue-500 text-slate-900 dark:text-slate-100"
+          : "border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}

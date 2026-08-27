@@ -18,15 +18,20 @@ export async function* runWorkflow({
   workflow,
   message,
   context,
+  recipientEmail,
   signal,
 }: {
   workflow: WorkflowSpec;
   message: string;
   context: AgentContextType;
+  recipientEmail?: string;
   signal?: AbortSignal;
 }): AsyncGenerator<WorkflowRunEvent> {
   const outputNodeIds = getWorkflowOutputNodeIds(workflow);
-  const graph = await compileWorkflow(workflow, { store: memoryStore });
+  const graph = await compileWorkflow(workflow, {
+    store: memoryStore,
+    recipientEmail,
+  });
   const stream = await graph.stream(
     { messages: [{ role: "user", content: message }] },
     {

@@ -68,9 +68,20 @@ export function createCalendarEventTool(accessToken: string) {
   );
 }
 
-export function createSendEmailTool(accessToken: string) {
+export function createSendEmailTool(
+  accessToken: string,
+  recipientEmail?: string,
+) {
   return tool(
     async ({ to, cc, subject, body }) => {
+      if (
+        recipientEmail &&
+        (to.length !== 1 ||
+          to[0].toLowerCase() !== recipientEmail.toLowerCase() ||
+          (cc?.length ?? 0) > 0)
+      ) {
+        throw new Error(`收件人必须是已确认邮箱：${recipientEmail}`);
+      }
       const message = [
         `To: ${to.join(", ")}`,
         cc?.length ? `Cc: ${cc.join(", ")}` : undefined,

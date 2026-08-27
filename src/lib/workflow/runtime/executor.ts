@@ -67,6 +67,7 @@ function createTool(
   modelNode: ModelNode,
   parentNodeId: string,
   googleAccessToken?: string,
+  recipientEmail?: string,
 ): Array<ClientTool | ServerTool> {
   switch (node.data.registryKey) {
     case "search":
@@ -83,7 +84,7 @@ function createTool(
       ];
     case "send_email": {
       if (!googleAccessToken) throw new Error("缺少 Google 授权 Token");
-      return [createSendEmailTool(googleAccessToken)];
+      return [createSendEmailTool(googleAccessToken, recipientEmail)];
     }
     case "google_calendar": {
       if (!googleAccessToken) throw new Error("缺少 Google 授权 Token");
@@ -109,6 +110,7 @@ export function createAgentExecutor(
   node: AgentNode,
   modelNode: ModelNode,
   toolNodes: ToolNode[],
+  recipientEmail?: string,
 ) {
   const skillInstructions = loadWorkflowSkills(node.data.skills ?? []);
   const needsGoogle = toolNodes.some(({ data }) =>
@@ -138,6 +140,7 @@ export function createAgentExecutor(
             modelNode,
             node.id,
             googleAuth?.accessToken,
+            recipientEmail,
           ),
         ),
         systemPrompt: [

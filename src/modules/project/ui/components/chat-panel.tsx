@@ -5,7 +5,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { MessageCirclePlus } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { WorkflowSpec } from "@/lib/workflow/schema";
+import type { WorkflowUpdate } from "@/lib/workflow/schema";
 import { useAgentChat } from "../../hooks/use-agent-chat";
 import { AgentTodoList } from "./agent-todo-list";
 import { ChatInput } from "./chat-input";
@@ -19,7 +19,7 @@ import {
 interface Props {
   chatWidth: number;
   projectId: string;
-  onWorkflow: (workflow: WorkflowSpec) => void;
+  onWorkflow: (update: WorkflowUpdate) => void;
 }
 
 export const ChatPanel = ({ chatWidth, projectId, onWorkflow }: Props) => {
@@ -30,6 +30,10 @@ export const ChatPanel = ({ chatWidth, projectId, onWorkflow }: Props) => {
     setInput,
     messages,
     loading,
+    pendingImages,
+    attachmentError,
+    addImages,
+    removeImage,
     sendMessage,
     startNewConversation,
   } = useAgentChat({ projectId, onWorkflow });
@@ -129,6 +133,10 @@ export const ChatPanel = ({ chatWidth, projectId, onWorkflow }: Props) => {
           setInput={setInput}
           sendMessage={sendMessage}
           loading={loading}
+          pendingImages={pendingImages}
+          attachmentError={attachmentError}
+          addImages={addImages}
+          removeImage={removeImage}
         />
       </div>
     </div>

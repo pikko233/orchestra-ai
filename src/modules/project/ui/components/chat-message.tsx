@@ -5,13 +5,14 @@ import type { AgentTodo } from "@/lib/ai/todos";
 import { cn } from "@/lib/utils";
 import { ChevronDown, ChevronRight, CircleAlert, Loader2 } from "lucide-react";
 import { MarkdownContent } from "./markdown-content";
+import type { ChatImage } from "@/lib/ai/images/types";
 
 type DbMessage = typeof messageTable.$inferSelect;
 
 export type ChatMessageData = Pick<
   DbMessage,
   "id" | "role" | "content" | "reasoning" | "status" | "error"
-> & { todos?: AgentTodo[] };
+> & { todos?: AgentTodo[]; images?: ChatImage[] };
 
 interface Props {
   message: ChatMessageData;
@@ -71,16 +72,45 @@ export const ChatMessage = memo(function Message({ message, loading }: Props) {
           )}
         </div>
       )}
+      {message.images && message.images.length > 0 && (
+        <div
+          className={cn(
+            "mb-2 grid gap-2 first:mt-0",
+            message.images.length === 1
+              ? "w-fit grid-cols-1"
+              : "max-w-xl grid-cols-2",
+          )}
+        >
+          {message.images.map((image) => (
+            <a
+              key={image.id}
+              href={image.url}
+              target="_blank"
+              rel="noreferrer"
+              className="block overflow-hidden rounded-lg border border-slate-200 bg-slate-100 dark:border-slate-700 dark:bg-slate-800"
+              title={image.filename}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={image.url}
+                alt={image.filename}
+                loading="lazy"
+                className="max-h-80 w-auto max-w-full object-contain"
+              />
+            </a>
+          ))}
+        </div>
+      )}
       {/* 消息正文 - AI/用户 */}
-      {isUser ? (
+      {isUser && message.content ? (
         <p className="break-words whitespace-pre-line leading-relaxed [overflow-wrap:anywhere]">
           {message.content}
         </p>
-      ) : (
+      ) : !isUser && message.content ? (
         <div className="prose prose-sm min-w-0 max-w-full overflow-hidden text-sm leading-relaxed dark:prose-invert">
           <MarkdownContent text={message.content} />
         </div>
-      )}
+      ) : null}
       {message.status === "failed" && message.error && (
         <div
           role="alert"

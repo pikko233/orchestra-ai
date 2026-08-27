@@ -7,6 +7,12 @@ import { saveMemoryTool } from "../tools/save-memory-tool";
 import { systemPrompt } from "../prompts";
 import { memoryMiddleware } from "../middlewares/memory-middleware";
 import { replaceWorkflowTool } from "../tools/replace-workflow-tool";
+import { generateImageTool } from "../tools/generate-image-tool";
+import {
+  createScheduleTool,
+  listSchedulesTool,
+  updateScheduleTool,
+} from "../tools/schedule-tools";
 import {
   globTool,
   grepTool,
@@ -42,5 +48,9 @@ export const streamAgent = createAgent({
     lsTool,
     globTool,
     grepTool,
+    generateImageTool,
+    createScheduleTool,
+    listSchedulesTool,
+    updateScheduleTool,
   ],
 });

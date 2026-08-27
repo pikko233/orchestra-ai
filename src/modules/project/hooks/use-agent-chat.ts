@@ -4,10 +4,19 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { readSse } from "@/lib/sse";
 import { parseAgentTodos } from "@/lib/ai/todos";
 import {
-  workflowSpecSchema,
-  type WorkflowSpec,
+  workflowUpdateSchema,
+  type WorkflowUpdate,
 } from "@/lib/workflow/schema";
 import type { ChatMessageData } from "../ui/components/chat-message";
+import {
+  ALLOWED_IMAGE_TYPES,
+  chatImageSchema,
+  MAX_CHAT_IMAGES,
+  MAX_UPLOAD_IMAGE_BYTES,
+  type ChatImage,
+  type PendingChatImage,
+} from "@/lib/ai/images/types";
+import { uploadFiles } from "@/lib/uploadthing";
 
 function getErrorMessage(value: unknown) {
   return value instanceof Error ? value.message : "请求失败，请稍后重试";
@@ -18,13 +27,73 @@ export function useAgentChat({
   onWorkflow,
 }: {
   projectId: string;
-  onWorkflow: (workflow: WorkflowSpec) => void;
+  onWorkflow: (update: WorkflowUpdate) => void;
 }) {
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<ChatMessageData[]>([]);
   const [conversationId, setConversationId] = useState<string>();
   const [loading, setLoading] = useState(false);
+  const [pendingImages, setPendingImages] = useState<PendingChatImage[]>([]);
+  const [attachmentError, setAttachmentError] = useState<string>();
   const abortRef = useRef<AbortController | null>(null);
+  const pendingImagesRef = useRef<PendingChatImage[]>([]);
+
+  useEffect(() => {
+    pendingImagesRef.current = pendingImages;
+  }, [pendingImages]);
+
+  const clearPendingImages = useCallback(() => {
+    for (const image of pendingImagesRef.current) {
+      URL.revokeObjectURL(image.previewUrl);
+    }
+    pendingImagesRef.current = [];
+    setPendingImages([]);
+    setAttachmentError(undefined);
+  }, []);
+
+  const addImages = useCallback(
+    (files: File[]) => {
+      setAttachmentError(undefined);
+      const available = MAX_CHAT_IMAGES - pendingImages.length;
+      const selected = files.slice(0, available);
+      const valid = selected.filter((file) => {
+        if (
+          !ALLOWED_IMAGE_TYPES.includes(
+            file.type as (typeof ALLOWED_IMAGE_TYPES)[number],
+          )
+        ) {
+          setAttachmentError("仅支持 PNG、JPEG 和 WebP 图片");
+          return false;
+        }
+        if (file.size === 0 || file.size > MAX_UPLOAD_IMAGE_BYTES) {
+          setAttachmentError("单张图片大小不能超过 4MB");
+          return false;
+        }
+        return true;
+      });
+      if (files.length > available) {
+        setAttachmentError(`每次最多发送 ${MAX_CHAT_IMAGES} 张图片`);
+      }
+      setPendingImages((current) => [
+        ...current,
+        ...valid.map((file) => ({
+          id: crypto.randomUUID(),
+          file,
+          previewUrl: URL.createObjectURL(file),
+        })),
+      ]);
+    },
+    [pendingImages.length],
+  );
+
+  const removeImage = useCallback((id: string) => {
+    setPendingImages((current) => {
+      const removed = current.find((image) => image.id === id);
+      if (removed) URL.revokeObjectURL(removed.previewUrl);
+      return current.filter((image) => image.id !== id);
+    });
+    setAttachmentError(undefined);
+  }, []);
 
   const updateMessage = useCallback(
     (
@@ -47,37 +116,72 @@ export function useAgentChat({
     setMessages([]);
     setInput("");
     setLoading(false);
-  }, []);
+    clearPendingImages();
+  }, [clearPendingImages]);
 
-  useEffect(() => () => abortRef.current?.abort(), []);
+  useEffect(
+    () => () => {
+      abortRef.current?.abort();
+      for (const image of pendingImagesRef.current) {
+        URL.revokeObjectURL(image.previewUrl);
+      }
+    },
+    [],
+  );
 
   const sendMessage = useCallback(async () => {
     const content = input.trim();
-    if (!content || loading) return;
+    if ((!content && pendingImages.length === 0) || loading) return;
 
     const clientMessageId = crypto.randomUUID();
     let userMessageId = clientMessageId;
     let assistantMessageId: string | undefined;
     let receivedTerminalEvent = false;
+    let messageAdded = false;
 
-    setInput("");
     setLoading(true);
-    setMessages((current) => [
-      ...current,
-      {
-        id: clientMessageId,
-        role: "user",
-        content,
-        reasoning: null,
-        status: "completed",
-        error: null,
-      },
-    ]);
+    setAttachmentError(undefined);
 
     const abortController = new AbortController();
     abortRef.current = abortController;
 
     try {
+      let uploadedImages: ChatImage[] = [];
+      if (pendingImages.length > 0) {
+        const uploaded = await uploadFiles("chatImage", {
+          files: pendingImages.map((image) => image.file),
+          input: { projectId },
+          signal: abortController.signal,
+        });
+        const parsed = chatImageSchema.array().safeParse(
+          uploaded.map((file) => ({
+            id: file.key,
+            filename: file.name,
+            mimeType: file.type,
+            source: "upload",
+            url: file.ufsUrl,
+          })),
+        );
+        if (!parsed.success) throw new Error("图片上传接口返回格式错误");
+        uploadedImages = parsed.data;
+      }
+
+      setInput("");
+      clearPendingImages();
+      setMessages((current) => [
+        ...current,
+        {
+          id: clientMessageId,
+          role: "user",
+          content,
+          reasoning: null,
+          status: "completed",
+          error: null,
+          images: uploadedImages,
+        },
+      ]);
+      messageAdded = true;
+
       const response = await fetch("/api/agent/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -86,6 +190,7 @@ export function useAgentChat({
           projectId,
           conversationId,
           clientMessageId,
+          images: uploadedImages,
         }),
         signal: abortController.signal,
       });
@@ -173,9 +278,19 @@ export function useAgentChat({
             }
             break;
           }
+          case "artifact": {
+            const image = chatImageSchema.safeParse(data.image);
+            if (typeof data.messageId === "string" && image.success) {
+              updateMessage(data.messageId, (message) => ({
+                ...message,
+                images: [...(message.images ?? []), image.data],
+              }));
+            }
+            break;
+          }
           case "workflow": {
-            const workflow = workflowSpecSchema.safeParse(data);
-            if (workflow.success) onWorkflow(workflow.data);
+            const update = workflowUpdateSchema.safeParse(data);
+            if (update.success) onWorkflow(update.data);
             break;
           }
           case "end": {
@@ -218,6 +333,10 @@ export function useAgentChat({
       }
 
       const errorMessage = getErrorMessage(error);
+      if (!messageAdded) {
+        setAttachmentError(errorMessage);
+        return;
+      }
       if (assistantMessageId) {
         updateMessage(assistantMessageId, (message) => ({
           ...message,
@@ -248,13 +367,26 @@ export function useAgentChat({
         setLoading(false);
       }
     }
-  }, [conversationId, input, loading, onWorkflow, projectId, updateMessage]);
+  }, [
+    clearPendingImages,
+    conversationId,
+    input,
+    loading,
+    onWorkflow,
+    pendingImages,
+    projectId,
+    updateMessage,
+  ]);
 
   return {
     input,
     setInput,
     messages,
     loading,
+    pendingImages,
+    attachmentError,
+    addImages,
+    removeImage,
     sendMessage,
     startNewConversation,
   };
