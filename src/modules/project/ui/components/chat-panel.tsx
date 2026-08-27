@@ -30,6 +30,10 @@ export const ChatPanel = ({ chatWidth, projectId, onWorkflow }: Props) => {
     setInput,
     messages,
     loading,
+    pendingImages,
+    attachmentError,
+    addImages,
+    removeImage,
     sendMessage,
     startNewConversation,
   } = useAgentChat({ projectId, onWorkflow });
@@ -129,6 +133,10 @@ export const ChatPanel = ({ chatWidth, projectId, onWorkflow }: Props) => {
           setInput={setInput}
           sendMessage={sendMessage}
           loading={loading}
+          pendingImages={pendingImages}
+          attachmentError={attachmentError}
+          addImages={addImages}
+          removeImage={removeImage}
         />
       </div>
     </div>

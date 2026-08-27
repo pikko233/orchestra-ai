@@ -9,6 +9,12 @@ const identifierSchema = z
   .regex(/^[A-Za-z0-9][A-Za-z0-9_-]*$/, "只能包含字母、数字、下划线和连字符");
 
 const optionalTextSchema = z.string().trim().min(1).max(2_000).optional();
+const nodePositionShape = {
+  position: z
+    .object({ x: z.number().finite(), y: z.number().finite() })
+    .strict()
+    .optional(),
+};
 
 export const workflowToolRegistry = [
   "search",
@@ -111,6 +117,7 @@ const workflowNodeSchema = z.discriminatedUnion("type", [
       id: identifierSchema,
       type: z.literal("input"),
       data: inputNodeDataSchema,
+      ...nodePositionShape,
     })
     .strict(),
   z
@@ -118,6 +125,7 @@ const workflowNodeSchema = z.discriminatedUnion("type", [
       id: identifierSchema,
       type: z.literal("agent"),
       data: agentNodeDataSchema,
+      ...nodePositionShape,
     })
     .strict(),
   z
@@ -125,6 +133,7 @@ const workflowNodeSchema = z.discriminatedUnion("type", [
       id: identifierSchema,
       type: z.literal("subAgent"),
       data: subAgentNodeDataSchema,
+      ...nodePositionShape,
     })
     .strict(),
   z
@@ -132,6 +141,7 @@ const workflowNodeSchema = z.discriminatedUnion("type", [
       id: identifierSchema,
       type: z.literal("model"),
       data: modelNodeDataSchema,
+      ...nodePositionShape,
     })
     .strict(),
   z
@@ -139,6 +149,7 @@ const workflowNodeSchema = z.discriminatedUnion("type", [
       id: identifierSchema,
       type: z.literal("tool"),
       data: toolNodeDataSchema,
+      ...nodePositionShape,
     })
     .strict(),
   z
@@ -146,6 +157,7 @@ const workflowNodeSchema = z.discriminatedUnion("type", [
       id: identifierSchema,
       type: z.literal("embeddingModel"),
       data: embeddingModelNodeDataSchema,
+      ...nodePositionShape,
     })
     .strict(),
   z
@@ -153,6 +165,7 @@ const workflowNodeSchema = z.discriminatedUnion("type", [
       id: identifierSchema,
       type: z.literal("vectorDB"),
       data: vectorDBNodeDataSchema,
+      ...nodePositionShape,
     })
     .strict(),
 ]);

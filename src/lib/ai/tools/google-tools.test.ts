@@ -49,6 +49,14 @@ test("creates calendar events and sends email through Google APIs", async () => 
       subject: "测试邮件",
       body: "发送成功",
     });
+    await assert.rejects(
+      createSendEmailTool("token", "fixed@example.com").invoke({
+        to: ["other@example.com"],
+        subject: "错误收件人",
+        body: "不应发送",
+      }),
+      /收件人必须是已确认邮箱/,
+    );
   } finally {
     globalThis.fetch = originalFetch;
   }

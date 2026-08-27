@@ -9,6 +9,7 @@ import {
 } from "@/db/schema";
 import { workflowSpecSchema } from "@/lib/workflow/schema";
 import { parseAgentTodos, type AgentTodo } from "@/lib/ai/todos";
+import { chatImageSchema, type ChatImage } from "@/lib/ai/images/types";
 import { llm } from "../models/llm";
 import { streamAgent } from ".";
 
@@ -21,6 +22,7 @@ export type AgentStreamEvent = {
     | "reasoning"
     | "todos"
     | "tool"
+    | "artifact"
     | "workflow"
     | "end"
     | "error";
@@ -31,6 +33,7 @@ type AgentOutput = {
   text: string;
   reasoning: string;
   todos: AgentTodo[];
+  images: ChatImage[];
   inputTokens?: number;
   outputTokens?: number;
 };
@@ -49,6 +52,15 @@ function parseWorkflow(output: unknown) {
     return workflowSpecSchema.safeParse(JSON.parse(output));
   } catch {
     return workflowSpecSchema.safeParse(null);
+  }
+}
+
+function parseChatImage(output: unknown) {
+  if (typeof output !== "string") return chatImageSchema.safeParse(output);
+  try {
+    return chatImageSchema.safeParse(JSON.parse(output));
+  } catch {
+    return chatImageSchema.safeParse(null);
   }
 }
 
@@ -100,12 +112,14 @@ export async function prepareAgentRun({
   message,
   conversationId: requestedConversationId,
   clientMessageId,
+  images = [],
 }: {
   userId: string;
   projectId: string;
   message: string;
   conversationId?: string;
   clientMessageId?: string;
+  images?: ChatImage[];
 }) {
   const [project] = await db
     .select({
@@ -124,7 +138,7 @@ export async function prepareAgentRun({
     conversationId: requestedConversationId,
     projectId,
     userId,
-    message,
+    message: message || "图片对话",
   });
 
   const { userMessageId, assistantMessageId } = await db.transaction(
@@ -137,6 +151,8 @@ export async function prepareAgentRun({
           content: message,
           status: "completed",
           clientMessageId,
+          metadata:
+            images.length > 0 ? { images } : null,
         })
         .returning({ id: messageTable.id });
 
@@ -172,6 +188,7 @@ export async function prepareAgentRun({
     assistantMessageId,
     workflow: project.workflow,
     revision: project.revision,
+    inputImages: images,
   };
 }
 
@@ -193,7 +210,10 @@ async function saveAssistant(
         error: error ?? null,
         inputTokens: output.inputTokens,
         outputTokens: output.outputTokens,
-        metadata: output.todos.length > 0 ? { todos: output.todos } : null,
+        metadata:
+          output.todos.length > 0 || output.images.length > 0
+            ? { todos: output.todos, images: output.images }
+            : null,
         updatedAt: new Date(),
       })
       .where(eq(messageTable.id, run.assistantMessageId));
@@ -215,7 +235,12 @@ export async function runPreparedAgent(
   emit: (event: AgentStreamEvent) => void,
   signal: AbortSignal,
 ) {
-  const output: AgentOutput = { text: "", reasoning: "", todos: [] };
+  const output: AgentOutput = {
+    text: "",
+    reasoning: "",
+    todos: [],
+    images: [],
+  };
 
   emit({
     type: "start",
@@ -227,6 +252,19 @@ export async function runPreparedAgent(
   });
 
   try {
+    const userContent =
+      run.inputImages.length > 0
+        ? [
+            { type: "text", text: run.message || "请分析这些图片。" },
+            ...run.inputImages.map((image) => ({
+              type: "image_url",
+              image_url: {
+                url: image.url,
+                detail: "auto" as const,
+              },
+            })),
+          ]
+        : run.message;
     const agentRun = await streamAgent.streamEvents(
       {
         messages: [
@@ -234,7 +272,7 @@ export async function runPreparedAgent(
             role: "system",
             content: `当前项目工作流（revision ${run.revision}）：\n${JSON.stringify(run.workflow)}`,
           },
-          { role: "user", content: run.message },
+          { role: "user", content: userContent },
         ],
         todos: [],
       },
@@ -309,6 +347,19 @@ export async function runPreparedAgent(
             const workflow = parseWorkflow(toolOutput);
             if (workflow.success) {
               emit({ type: "workflow", data: workflow.data });
+            }
+          }
+          if (call.name === "generate_image") {
+            const image = parseChatImage(toolOutput);
+            if (image.success) {
+              output.images.push(image.data);
+              emit({
+                type: "artifact",
+                data: {
+                  messageId: run.assistantMessageId,
+                  image: image.data,
+                },
+              });
             }
           }
         } catch (error) {

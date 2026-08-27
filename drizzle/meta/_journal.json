@@ -15,6 +15,13 @@
       "when": 1787665861715,
       "tag": "0001_project_user_updated_index",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1787819218568,
+      "tag": "0002_sticky_living_lightning",
+      "breakpoints": true
     }
   ]
 }

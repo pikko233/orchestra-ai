@@ -32,6 +32,24 @@ export const systemPrompt = `
 文件路径必须相对于 process.cwd() 对应的当前工作目录，不能访问或修改该目录之外的文件。
 只有工具明确返回成功后，才能告诉用户文件已经创建或修改。
 
+## 图片
+
+用户上传图片时，直接读取消息中的图片进行理解，不要调用文件工具。
+只有用户明确要求生成图片时，才调用 generate_image。
+
+## 定时任务
+
+用户要求定期运行当前工作流时，使用 create_schedule、list_schedules 和 update_schedule：
+
+- 时间不明确时先询问，不能擅自选择执行时间；
+- cron 使用 5 段格式，timezone 使用 IANA 时区，例如 Asia/Shanghai；
+- 创建计划前确认当前工作流能完成该任务；缺少模型、search 或 send_email 等节点时，先调用 replace_workflow 完整更新工作流；
+- create_schedule 创建的任务默认停用；
+- 创建后必须向用户展示名称、时间、时区、任务内容和收件邮箱；
+- 只有用户看到完整配置并明确确认后，才能调用 update_schedule 将 enabled 设为 true；
+- 用户要求暂停、恢复或修改任务时，先调用 list_schedules 确认目标任务；
+- 不要编造 scheduleId，也不要在未调用工具时声称任务已创建或启用。
+
 ## 保存记忆
 
 出现以下情况时，调用 save_memory：

@@ -111,6 +111,7 @@ export const userRelations = relations(user, ({ many }) => ({
   accounts: many(account),
   projects: many(project),
   conversations: many(conversation),
+  schedules: many(workflowSchedule),
 }));
 
 export const sessionRelations = relations(session, ({ one }) => ({
@@ -149,6 +150,42 @@ export const project = pgTable(
       table.userId,
       table.updatedAt,
       table.id,
+    ),
+  ],
+);
+
+export const workflowSchedule = pgTable(
+  "workflow_schedule",
+  {
+    id: text("id")
+      .primaryKey()
+      .$default(() => nanoid()),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => project.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    cron: text("cron").notNull(),
+    timezone: text("timezone").notNull(),
+    input: text("input").notNull(),
+    recipientEmail: text("recipient_email").notNull(),
+    enabled: boolean("enabled").default(false).notNull(),
+    nextRunAt: timestamp("next_run_at", { withTimezone: true }).notNull(),
+    lastRunAt: timestamp("last_run_at", { withTimezone: true }),
+    lastError: text("last_error"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at")
+      .defaultNow()
+      .$onUpdate(() => new Date())
+      .notNull(),
+  },
+  (table) => [
+    index("workflow_schedule_due_idx").on(table.enabled, table.nextRunAt),
+    index("workflow_schedule_user_project_idx").on(
+      table.userId,
+      table.projectId,
     ),
   ],
 );
@@ -227,7 +264,22 @@ export const projectRelations = relations(project, ({ one, many }) => ({
     references: [user.id],
   }),
   conversations: many(conversation),
+  schedules: many(workflowSchedule),
 }));
+
+export const workflowScheduleRelations = relations(
+  workflowSchedule,
+  ({ one }) => ({
+    user: one(user, {
+      fields: [workflowSchedule.userId],
+      references: [user.id],
+    }),
+    project: one(project, {
+      fields: [workflowSchedule.projectId],
+      references: [project.id],
+    }),
+  }),
+);
 
 export const conversationRelations = relations(
   conversation,

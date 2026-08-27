@@ -6,15 +6,31 @@ import {
   runPreparedAgent,
 } from "@/lib/ai/agents/runner";
 import { auth } from "@/lib/auth";
+import { chatImageSchema } from "@/lib/ai/images/types";
 
 export const maxDuration = 180;
 
-const requestSchema = z.object({
-  message: z.string().trim().min(1),
-  projectId: z.string().trim().min(1),
-  conversationId: z.string().trim().min(1).optional(),
-  clientMessageId: z.string().trim().min(1).optional(),
-});
+const requestSchema = z
+  .object({
+    message: z.string().trim().max(20_000).default(""),
+    projectId: z.string().trim().min(1),
+    conversationId: z.string().trim().min(1).optional(),
+    clientMessageId: z.string().trim().min(1).optional(),
+    images: z
+      .array(
+        chatImageSchema.refine(
+          ({ source, url }) =>
+            source === "upload" &&
+            /^https:\/\/([^.]+\.)?ufs\.sh\/f\//.test(url),
+          "图片来源无效",
+        ),
+      )
+      .max(3)
+      .default([]),
+  })
+  .refine(({ message, images }) => message.length > 0 || images.length > 0, {
+    message: "消息或图片至少提供一项",
+  });
 
 const encoder = new TextEncoder();
 const sse = (event: string, data: unknown) =>

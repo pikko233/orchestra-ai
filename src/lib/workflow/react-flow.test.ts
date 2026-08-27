@@ -43,6 +43,17 @@ test("maps node types and semantic handles", () => {
   );
 });
 
+test("preserves saved node positions", () => {
+  const positioned = {
+    ...workflow,
+    nodes: workflow.nodes.map((node) =>
+      node.id === "agent" ? { ...node, position: { x: 42, y: 84 } } : node,
+    ),
+  } satisfies WorkflowSpec;
+
+  assert.deepEqual(toReactFlow(positioned).nodes[1].position, { x: 42, y: 84 });
+});
+
 test("uses the rendered width when spacing regular nodes", () => {
   const regularWorkflow = {
     version: 1,

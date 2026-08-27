@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
+import {
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  type Ref,
+} from "react";
 import {
   addEdge,
   Background,
@@ -13,13 +19,18 @@ import {
   useNodesState,
   type Connection,
   type ReactFlowInstance,
+  type XYPosition,
   MarkerType,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { nodeTypes } from "@/components/node/types";
 import { NODE_THEMES } from "@/components/node/themes";
 import { toReactFlow, type WorkflowFlowNode } from "@/lib/workflow/react-flow";
-import type { WorkflowSpec } from "@/lib/workflow/schema";
+import type {
+  WorkflowConnectionKind,
+  WorkflowNodeType,
+  WorkflowSpec,
+} from "@/lib/workflow/schema";
 import type { WorkflowNodeStatus } from "@/modules/project/hooks/use-workflow-runner";
 
 const miniMapColors: Record<string, string> = {
@@ -35,24 +46,72 @@ const miniMapColors: Record<string, string> = {
 interface Props {
   workflow: WorkflowSpec | null;
   nodeStatuses: Record<string, WorkflowNodeStatus>;
+  onWorkflowChange: (workflow: WorkflowSpec) => void;
+  canvasRef: Ref<WorkflowCanvasHandle>;
 }
 
-export function WorkflowCanvas({ workflow, nodeStatuses }: Props) {
+export type WorkflowCanvasHandle = {
+  getRandomCenterPosition: () => XYPosition;
+  getNodePositions: () => Record<string, XYPosition>;
+};
+
+function getConnectionKind(
+  source: WorkflowNodeType,
+  target: WorkflowNodeType,
+  sourceHandle: string | null,
+): WorkflowConnectionKind | null {
+  const isAgent = source === "agent" || source === "subAgent";
+  if (isAgent && sourceHandle === "tools" && target === "tool") return "tool";
+  if (isAgent && sourceHandle === "out" && target === "model") return "model";
+  if (
+    sourceHandle === "out" &&
+    (source === "input" || isAgent) &&
+    (target === "agent" || target === "subAgent")
+  ) {
+    return "flow";
+  }
+  return null;
+}
+
+export function WorkflowCanvas({
+  workflow,
+  nodeStatuses,
+  onWorkflowChange,
+  canvasRef,
+}: Props) {
   const initial = workflow ? toReactFlow(workflow) : { nodes: [], edges: [] };
   const [nodes, setNodes, onNodesChange] = useNodesState<WorkflowFlowNode>(
     initial.nodes,
   );
   const [edges, setEdges, onEdgesChange] = useEdgesState(initial.edges);
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const instanceRef = useRef<ReactFlowInstance<WorkflowFlowNode> | null>(null);
+  const workflowRef = useRef(workflow);
+
+  useImperativeHandle(canvasRef, () => ({
+    getNodePositions: () =>
+      Object.fromEntries(
+        (instanceRef.current?.getNodes() ?? []).map(({ id, position }) => [
+          id,
+          { ...position },
+        ]),
+      ),
+    getRandomCenterPosition: () => {
+      const bounds = containerRef.current?.getBoundingClientRect();
+      if (!bounds || !instanceRef.current) return { x: 0, y: 0 };
+
+      return instanceRef.current.screenToFlowPosition({
+        x: bounds.left + bounds.width / 2 + (Math.random() - 0.5) * 360,
+        y: bounds.top + bounds.height / 2 + (Math.random() - 0.5) * 240,
+      });
+    },
+  }));
 
   useEffect(() => {
     const next = workflow ? toReactFlow(workflow) : { nodes: [], edges: [] };
+    workflowRef.current = workflow;
     setNodes(next.nodes);
     setEdges(next.edges);
-
-    requestAnimationFrame(() => {
-      void instanceRef.current?.fitView({ padding: 0.2, maxZoom: 1 });
-    });
   }, [setEdges, setNodes, workflow]);
 
   useEffect(() => {
@@ -66,22 +125,112 @@ export function WorkflowCanvas({ workflow, nodeStatuses }: Props) {
 
   const onConnect = useCallback(
     (connection: Connection) => {
+      const current = workflowRef.current;
+      if (!current || !connection.source || !connection.target) return;
+
+      const source = current.nodes.find(({ id }) => id === connection.source);
+      const target = current.nodes.find(({ id }) => id === connection.target);
+      if (!source || !target) return;
+
+      const kind = getConnectionKind(
+        source.type,
+        target.type,
+        connection.sourceHandle,
+      );
+      if (!kind) return;
+
+      const nextConnection = {
+        id: crypto.randomUUID(),
+        from: connection.source,
+        to: connection.target,
+        kind,
+      };
+      if (
+        current.connections.some(
+          ({ from, to, kind: currentKind }) =>
+            from === nextConnection.from &&
+            to === nextConnection.to &&
+            currentKind === kind,
+        )
+      ) {
+        return;
+      }
+
       setEdges((current) =>
         addEdge(
           {
             ...connection,
-            id: crypto.randomUUID(),
+            id: nextConnection.id,
+            label: kind,
             type: "bezier",
           },
           current,
         ),
       );
+      const next = {
+        ...current,
+        connections: [...current.connections, nextConnection],
+      };
+      workflowRef.current = next;
+      onWorkflowChange(next);
     },
-    [setEdges],
+    [onWorkflowChange, setEdges],
+  );
+
+  const onNodeDragStop = useCallback(
+    (_event: MouseEvent | TouchEvent, node: WorkflowFlowNode) => {
+      const current = workflowRef.current;
+      if (!current) return;
+      const next = {
+        ...current,
+        nodes: current.nodes.map((item) =>
+          item.id === node.id ? { ...item, position: node.position } : item,
+        ),
+      };
+      workflowRef.current = next;
+      onWorkflowChange(next);
+    },
+    [onWorkflowChange],
+  );
+
+  const onNodesDelete = useCallback(
+    (deleted: WorkflowFlowNode[]) => {
+      const current = workflowRef.current;
+      if (!current) return;
+      const ids = new Set(deleted.map(({ id }) => id));
+      const next = {
+        ...current,
+        nodes: current.nodes.filter(({ id }) => !ids.has(id)),
+        connections: current.connections.filter(
+          ({ from, to }) => !ids.has(from) && !ids.has(to),
+        ),
+      };
+      workflowRef.current = next;
+      onWorkflowChange(next);
+    },
+    [onWorkflowChange],
+  );
+
+  const onEdgesDelete = useCallback(
+    (deleted: Array<{ id: string }>) => {
+      const current = workflowRef.current;
+      if (!current) return;
+      const ids = new Set(deleted.map(({ id }) => id));
+      const next = {
+        ...current,
+        connections: current.connections.filter(({ id }) => !ids.has(id)),
+      };
+      workflowRef.current = next;
+      onWorkflowChange(next);
+    },
+    [onWorkflowChange],
   );
 
   return (
-    <div className="relative h-full min-h-0 w-full bg-slate-50 dark:bg-slate-950">
+    <div
+      ref={containerRef}
+      className="relative h-full min-h-0 w-full bg-slate-50 dark:bg-slate-950"
+    >
       <ReactFlow<WorkflowFlowNode>
         nodes={nodes}
         edges={edges}
@@ -89,6 +238,9 @@ export function WorkflowCanvas({ workflow, nodeStatuses }: Props) {
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
+        onNodeDragStop={onNodeDragStop}
+        onNodesDelete={onNodesDelete}
+        onEdgesDelete={onEdgesDelete}
         connectionLineType={ConnectionLineType.Bezier}
         onInit={(instance) => {
           instanceRef.current = instance;

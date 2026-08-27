@@ -124,5 +124,7 @@ export function useWorkflowRunner(projectId: string) {
     [projectId, running],
   );
 
-  return { run, running, output, error, nodeStatuses, subAgents };
+  const stop = useCallback(() => abortRef.current?.abort(), []);
+
+  return { run, stop, running, output, error, nodeStatuses, subAgents };
 }

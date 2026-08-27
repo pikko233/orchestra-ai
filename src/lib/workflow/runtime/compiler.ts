@@ -37,7 +37,7 @@ export function getWorkflowOutputNodeIds(workflow: WorkflowSpec) {
 
 export async function compileWorkflow(
   workflow: WorkflowSpec,
-  options: { store?: BaseStore } = {},
+  options: { store?: BaseStore; recipientEmail?: string } = {},
 ) {
   const nodes = new Map(workflow.nodes.map((node) => [node.id, node]));
   const agents = workflow.nodes.filter(isAgent);
@@ -71,7 +71,12 @@ export async function compileWorkflow(
 
       return [
         agent.id,
-        createAgentExecutor(agent, modelNodes[0], toolNodes),
+        createAgentExecutor(
+          agent,
+          modelNodes[0],
+          toolNodes,
+          options.recipientEmail,
+        ),
       ] as const;
     }),
   );
